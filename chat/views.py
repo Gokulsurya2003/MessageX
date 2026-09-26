@@ -312,18 +312,37 @@ def forgot_password(request):
 
         request.session["reset_code"] = code
 
-        send_mail(
-            "MessageX Password Reset Code",
-            f"Your verification code is: {code}",
-            None,
-            [email],
-            fail_silently=False,
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "accept": "application/json",
+                "api-key": os.getenv("BREVO_API_KEY"),
+                "content-type": "application/json",
+            },
+            json={
+                "sender": {
+                    "name": "MessageX",
+                    "email": "suryagokul302@gmail.com"
+                },
+                "to": [{"email": email}],
+                "subject": "MessageX Password Reset Code",
+                "textContent": f"Your password reset code is: {code}",
+            },
         )
+
+        print("BREVO STATUS:", response.status_code)
+        print("BREVO RESPONSE:", response.text)
+
+        if response.status_code not in [200, 201, 202]:
+            return render(
+                request,
+                "forgot-password.html",
+                {"error": "Unable to send verification email. Please try again."},
+            )
 
         return redirect("verify_code")
 
     return render(request, "forgot-password.html")
-
 
 def verify_code(request):
     if request.method == "POST":
