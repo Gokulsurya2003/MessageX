@@ -257,6 +257,8 @@ def signup(request):
                 "textContent": f"Your verification code is: {code}",
             },
         )
+        print("BREVO STATUS:", response.status_code)
+        print("BREVO RESPONSE:", response.text)
 
         if response.status_code not in [200, 201, 202]:
             return render(
