@@ -44,7 +44,7 @@ def find_random_chat(request):
     gender = request.session.get("gender")
 
     if not username or not gender:
-        return redirect("chat")
+        return redirect("login")
 
     opposite_gender = "female" if gender == "male" else "male"
 
@@ -150,7 +150,7 @@ def home(request):
     username = request.session.get("username")
 
     if not username:
-        return redirect("chat")
+        return redirect("login")
 
     current_user = ChatUser.objects.filter(username=username).first()
 
@@ -311,6 +311,7 @@ def forgot_password(request):
         code = str(random.randint(100000, 999999))
 
         request.session["reset_code"] = code
+        request.session["reset_email"] = email
 
         response = requests.post(
             "https://api.brevo.com/v3/smtp/email",
@@ -367,17 +368,43 @@ def reset_password(request):
         confirm_password = request.POST.get("confirm_password")
 
         if password != confirm_password:
-
             return render(
-                request, "reset-password.html", {"error": "Passwords do not match!"}
+                request,
+                "reset-password.html",
+                {"error": "Passwords do not match!"},
             )
 
-        request.session["new_password"] = password
+        email = request.session.get("reset_email")
+        print("RESET EMAIL:", email)
+
+        if not email:
+            return render(
+                request,
+                "reset-password.html",
+                {"error": "Password reset session expired. Please try again."},
+            )
+
+        user = ChatUser.objects.filter(email=email).first()
+        print("RESET USER:", user)
+
+        if not user:
+            return render(
+                request,
+                "reset-password.html",
+                {"error": "User not found!"},
+            )
+
+        user.password = make_password(password)
+        user.save()
+
+        print("PASSWORD UPDATED:", check_password(password, user.password))
+
+        request.session.pop("reset_code", None)
+        request.session.pop("reset_email", None)
 
         return redirect("chat")
 
     return render(request, "reset-password.html")
-
 
 def disconnect_chat(request):
     username = request.session.get("username")
