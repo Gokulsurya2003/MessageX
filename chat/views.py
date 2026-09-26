@@ -34,6 +34,8 @@ def login_user(request):
         password = request.POST.get("password")
 
         user = ChatUser.objects.filter(username=username).first()
+        print("LOGIN USERNAME:", repr(username))
+        print("USER FOUND:", user)
 
         if user and check_password(password, user.password):
             user.is_online = True
