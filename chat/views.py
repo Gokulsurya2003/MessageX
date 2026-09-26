@@ -385,7 +385,7 @@ def reset_password(request):
                 {"error": "Password reset session expired. Please try again."}
             )
 
-        email = email.strip()
+        email = email.replace("\\@", "@").strip()
 
         user = ChatUser.objects.filter(email__iexact=email).first()
 
