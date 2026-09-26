@@ -375,18 +375,21 @@ def reset_password(request):
             )
 
         email = request.session.get("reset_email")
-        print("RESET EMAIL:", email)
+
+        print("RESET EMAIL:", repr(email))
 
         if not email:
             return render(
                 request,
                 "reset-password.html",
-                {"error": "Password reset session expired. Please try again."},
+                {"error": "Password reset session expired. Please try again."}
             )
 
-        user = ChatUser.objects.filter(email=email).first()
-        print("RESET USER:", user)
+        email = email.strip()
 
+        user = ChatUser.objects.filter(email__iexact=email).first()
+
+        print("RESET USER:", user)
         if not user:
             return render(
                 request,
