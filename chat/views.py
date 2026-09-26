@@ -110,10 +110,10 @@ def find_random_chat(request):
         .exclude(id__in=excluded_user_ids)
     )
 
-    # --------------------------------------------------
-    # Create match
-    # --------------------------------------------------
+    print("MATCH DEBUG:", username, gender, "looking for:", opposite_gender)
+    print("AVAILABLE USERS:", list(users.values("username", "gender", "is_online", "is_matched")))
 
+    
     if users.exists():
 
         matched_user = random.choice(list(users))
