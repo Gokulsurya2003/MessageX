@@ -53,7 +53,6 @@ def login_user(request):
 
     return render(request, "chat.html")
 
-
 def find_random_chat(request):
     username = request.session.get("username")
     gender = request.session.get("gender")
@@ -87,12 +86,16 @@ def find_random_chat(request):
 
     cutoff = timezone.now() - timedelta(seconds=60)
 
-    
+    current_user.last_seen = timezone.now()
+    current_user.is_online = True
+    current_user.save()
 
-    ChatUser.objects.filter(is_online=True, last_seen__lt=cutoff).update(
+    ChatUser.objects.filter(
+        is_online=True,
+        last_seen__lt=cutoff
+    ).update(
         is_online=False
     )
-
     # --------------------------------------------------
     # Find users blocked by current user
     # --------------------------------------------------
@@ -211,6 +214,21 @@ def home(request):
 
 def chat(request):
     return render(request, "chat.html")
+def logout_user(request):
+    username = request.session.get("username")
+
+    if username:
+        current_user = ChatUser.objects.filter(username=username).first()
+
+        if current_user:
+            current_user.is_online = False
+            current_user.is_matched = False
+            current_user.matched_with = None
+            current_user.save()
+
+    request.session.flush()
+
+    return redirect("login")
 
 
 def signup(request):
@@ -551,11 +569,17 @@ def match_status(request):
 
     if not username:
         return JsonResponse({"matched": False})
+    current_user.is_online = True
+    current_user.last_seen = timezone.now()
+    current_user.save()
 
     current_user = ChatUser.objects.filter(username=username).first()
 
     if not current_user:
         return JsonResponse({"matched": False})
+    current_user.is_online = True
+    current_user.last_seen = timezone.now()
+    current_user.save()
 
     if current_user.is_matched and current_user.matched_with:
 
@@ -565,7 +589,7 @@ def match_status(request):
 
         if matched_user:
 
-            cutoff = timezone.now() - timedelta(seconds=8)
+            cutoff = timezone.now() - timedelta(seconds=60)
 
             recent_connection = (
                 matched_user.last_seen and matched_user.last_seen >= cutoff
