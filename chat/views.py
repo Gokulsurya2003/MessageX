@@ -85,7 +85,9 @@ def find_random_chat(request):
     # Remove stale online users
     # --------------------------------------------------
 
-    cutoff = timezone.now() - timedelta(seconds=8)
+    cutoff = timezone.now() - timedelta(seconds=60)
+
+    
 
     ChatUser.objects.filter(is_online=True, last_seen__lt=cutoff).update(
         is_online=False
