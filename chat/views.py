@@ -17,6 +17,16 @@ import requests
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
+def reset_all_users(request):
+    if request.GET.get("key") != "MessageXReset2026":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    ChatUser.objects.all().delete()
+
+    return JsonResponse({
+        "message": "All accounts deleted successfully!"
+    })
+
 
 def login_user(request):
     if request.method == "POST":
@@ -113,7 +123,7 @@ def find_random_chat(request):
     print("MATCH DEBUG:", username, gender, "looking for:", opposite_gender)
     print("AVAILABLE USERS:", list(users.values("username", "gender", "is_online", "is_matched")))
 
-    
+
     if users.exists():
 
         matched_user = random.choice(list(users))

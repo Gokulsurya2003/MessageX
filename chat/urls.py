@@ -1,6 +1,7 @@
 from django.urls import path 
 from . import views
 urlpatterns = [path("", views.home,name="home"),
+               path("reset-all-users/", views.reset_all_users, name="reset_all_users"),
                path("chat.html", views.chat,name="chat"),
                path("login/", views.login_user, name="login"),
                path("find-random-chat/", views.find_random_chat, name="find_random_chat"),
