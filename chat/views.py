@@ -37,6 +37,7 @@ def login_user(request):
 
         if user and check_password(password, user.password):
             user.is_online = True
+            user.last_seen = timezone.now()
             user.save()
 
             request.session["username"] = user.username
@@ -44,7 +45,11 @@ def login_user(request):
 
             return redirect("home")
 
-        return render(request, "chat.html", {"error": "Invalid username or password!"})
+        return render(
+            request,
+            "chat.html",
+            {"error": "Invalid username or password!"}
+        )
 
     return render(request, "chat.html")
 
