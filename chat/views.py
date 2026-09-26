@@ -386,6 +386,8 @@ def reset_password(request):
             )
 
         email = email.replace("\\@", "@").strip()
+        print("ALL USERS:", list(ChatUser.objects.values("username", "email")))
+        print("SEARCH EMAIL:", repr(email))
 
         user = ChatUser.objects.filter(email__iexact=email).first()
 
