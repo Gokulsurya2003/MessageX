@@ -1,0 +1,160 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>MessageX | Online Chat</title>
+
+    {% load static %}
+
+<link rel="icon"
+      type="image/png"
+      href="{% static 'chat/chat.png' %}">
+
+      {% load static %}
+       <link rel="stylesheet" href="{% static 'chat/chat.css' %}">
+
+</head>
+
+<body>
+
+    <main class="page">
+
+        <!-- Left Side -->
+        <section class="intro">
+
+            <div class="intro-content">
+
+                <div class="chat-icon"> <img src="{% static 'chat/chat.png' %}" height="50px" width="50px"></div>
+                
+
+                <h1>Chat with<br>
+                    <span>new people</span>
+                </h1>
+
+                <p class="intro-text">
+                    Join MessageX and meet new people from around
+                    the world. Share your thoughts, make new friends
+                    and have great conversations.
+                </p>
+
+                <div class="features">
+
+                    <div>
+                        🌎
+                        <span>Global<br>Community</span>
+                    </div>
+
+                    <div>
+                        🛡️
+                        <span>Safe &<br>Secure</span>
+                    </div>
+
+                    <div>
+                        ⚡
+                        <span>Real-time<br>Chat</span>
+                    </div>
+
+                </div>
+
+                <h3>Good Conversations Start Here 😊</h3>
+
+            </div>
+
+        </section>
+
+
+        <!-- Right Side -->
+        <section class="login-section">
+
+            <div class="login-card">
+
+                <div class="logo">
+                    <img src="{% static 'chat/chat.png' %}" height="40px" width="40px">
+                </div>
+
+                <h2>MessageX</h2>
+
+                <p class="subtitle">
+                    Connect | Chat | Meet new people
+                </p>
+
+            {% if error %}
+                <p style="color: red; margin-bottom: 15px;">
+                    {{ error }}
+                </p>
+            {% endif %}
+
+
+                <form id="loginForm" method="POST" action="{% url 'login' %}">
+                    {% csrf_token %}
+
+                    <label for="username">
+                        Username
+                    </label>
+
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        placeholder="Enter your username"
+                        required
+                    >
+
+
+                    <div class="form-group">
+    <label for="password">Password</label>
+
+    <div class="password-box">
+        <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="Enter your password"
+            required
+        >
+
+        <span class="eye" onclick="togglePassword('password', this)">👁️</span>
+    </div>
+</div>
+
+
+                    <div class="options">
+
+                        <label>
+                            <input type="checkbox">
+                            Remember me
+                        </label>
+
+                        <a href="{% url 'forgot_password' %}">
+                            Forgot Password?
+                        </a>
+
+                    </div>
+
+
+                    <button type="submit">
+                        Login →
+                    </button>
+
+                </form>
+
+
+                <p class="signup">
+                    Don't have an account?
+                    <a href="signup.html">Create Account</a>
+                </p>
+
+            </div>
+
+        </section>
+
+    </main>
+    <script src="{% static 'chat/chat.js' %}"></script>
+
+</body>
+
+</html>

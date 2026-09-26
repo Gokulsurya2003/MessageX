@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>MessageX | Create Account</title>
+    {% load static %}
+
+    <link rel="stylesheet" href="{% static 'chat/chat.css' %}">
+
+     <link rel="icon"
+          type="image/png"
+          href="{% static 'chat/chat.png' %}">
+
+</head>
+
+<body>
+
+    <main class="login-container page">
+
+        <section class="login-card">
+
+            <div class="logo">
+                <img src="{% static 'chat/chat.png' %}" height="40px" width="40px">
+            </div>
+
+            <h2>Create Account</h2>
+
+            <p class="subtitle">
+                Join MessageX and start chatting
+            </p>
+
+            {% if error %}
+                <div style="color: red; margin-bottom: 15px;">
+                     {{ error }}
+                </div>
+            {% endif %}
+
+            <form id="signupForm" method="POST">
+                   {% csrf_token %}
+
+                <div class="form-group">
+                    <label for="name">First Name</label>
+                    <input
+                        type="text"
+                        id="name"
+                        placeholder="Enter your first name"
+                        required
+                    >
+                </div>
+                <div class="form-group">
+                    <label for="name">Last Name</label>
+                    <input
+                        type="text"
+                        id="name"
+                        placeholder="Enter your last name"
+                        required
+                    >
+                </div>
+
+                    <div class="form-group">
+    <label>Gender</label> <br>
+
+    <div style="display: flex; flex-direction: row; align-items: center; gap: 30px;">
+
+        <label style="display: flex; flex-direction: row; align-items: center; width: auto; margin: 0;">
+            <input
+                type="radio"
+                name="gender"
+                value="male"
+                required
+                style="width: auto; margin: 0 6px 0 0; cursor: pointer;"
+            >
+            Male
+        </label>
+
+        <label style="display: flex; flex-direction: row; align-items: center; width: auto; margin: 0;">
+            <input
+                type="radio"
+                name="gender"
+                value="female"
+                style="width: auto; margin: 0 6px 0 0; cursor: pointer;"
+            >
+            Female
+        </label>
+
+    </div>
+</div>
+
+<br> <br>
+
+
+                
+
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        placeholder="Choose a username (ex:name_123)"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="Enter your email"
+                        required
+                    >
+                </div>
+                <br> 
+                <div class="form-group">
+                    <label>Password</label>
+
+                    <div class="password-box">
+                        <input type="password"
+                              id="password"
+                              name="password"
+                              placeholder="Create a password"
+                                       required>
+                    <span class="eye"onclick="togglePassword('password', this)">👁️</span>
+
+                     </div>
+</div>
+
+
+<div class="form-group">
+    <label>Confirm Password</label>
+
+    <div class="password-box">
+        <input type="password"
+               id="confirmPassword"
+               name="confirm_password"
+               placeholder="Confirm your password"
+               required>
+
+        <span class="eye"onclick="togglePassword('confirmPassword', this)">👁️</span>
+    </div>
+</div>
+                                       
+                            
+        
+   
+                
+                <button type="submit">
+                    Create Account
+                </button>
+
+            </form>
+
+            <p class="signup">
+                Already have an account?
+                <a href="chat.html">Login</a>
+            </p>
+
+        </section>
+
+    </main>
+    <script src="{% static 'chat/chat.js' %}"></script>
+
+</body>
+
+</html>
