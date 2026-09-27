@@ -453,8 +453,10 @@ blockBtn.addEventListener("click", function () {
         } 
     }); 
  
-    const socket = new WebSocket( 
-        "ws://" + window.location.host + "/ws/chat/" 
+    const socket = new WebSocket(
+        (window.location.protocol === "https:" ? "wss://" : "ws://")
+        + window.location.host
+        + "/ws/chat/"
     ); 
 
     const heartbeatTimer = setInterval(function () {
