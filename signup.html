@@ -164,6 +164,22 @@
 
     </main>
     <script src="{% static 'chat/chat.js' %}"></script>
+    <script>
+document.querySelectorAll("input").forEach(function(input) {
+
+    input.addEventListener("focus", function() {
+
+        setTimeout(function() {
+            input.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+        }, 300);
+
+    });
+
+});
+</script>
 
 </body>
 
