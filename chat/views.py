@@ -571,9 +571,7 @@ def match_status(request):
 
     if not username:
         return JsonResponse({"matched": False})
-    current_user.is_online = True
-    current_user.last_seen = timezone.now()
-    current_user.save()
+    
 
     current_user = ChatUser.objects.filter(username=username).first()
 
