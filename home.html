@@ -553,6 +553,13 @@ blockBtn.addEventListener("click", function () {
     clearInterval(heartbeatTimer);
     console.log("WebSocket disconnected!");
 }; 
+    window.addEventListener("pagehide", function () {
+        clearInterval(heartbeatTimer);
+
+        if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+        }
+    });
  
     socket.onerror = function (error) { 
         console.log("WebSocket error:", error); 
