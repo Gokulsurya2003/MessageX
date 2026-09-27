@@ -252,10 +252,7 @@ randomChatBtn.addEventListener("click", function () {
 <script>
     const logoutBtn = document.getElementById("logoutBtn");
     logoutBtn.addEventListener("click",function (){
-        localStorage.removeItem("username");
-        localStorage.removeItem("email");
-        localStorage.removeItem("password");
-        window.location.href="chat.html";
+        window.location.href = "{% url 'logout' %}";
         
     });
 
