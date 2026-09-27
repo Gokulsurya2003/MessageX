@@ -86,6 +86,8 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+print("DATABASE URL EXISTS:", bool(DATABASE_URL))
+
 if DATABASE_URL:
     DATABASES = {
         "default": dj_database_url.parse(
