@@ -87,6 +87,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 print("DATABASE URL EXISTS:", bool(DATABASE_URL))
+print("DATABASE ENV KEYS:", [k for k in os.environ if "DATABASE" in k])
 
 if DATABASE_URL:
     DATABASES = {
