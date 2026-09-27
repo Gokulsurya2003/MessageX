@@ -86,7 +86,7 @@ def find_random_chat(request):
     # Remove stale online users
     # --------------------------------------------------
 
-    cutoff = timezone.now() - timedelta(seconds=60)
+    cutoff = timezone.now() - timedelta(seconds=8)
 
     current_user.last_seen = timezone.now()
     current_user.is_online = True
@@ -589,7 +589,7 @@ def match_status(request):
 
         if matched_user:
 
-            cutoff = timezone.now() - timedelta(seconds=60)
+            cutoff = timezone.now() - timedelta(seconds=8)
 
             recent_connection = (
                 matched_user.last_seen and matched_user.last_seen >= cutoff
