@@ -4,6 +4,8 @@ from django.utils import timezone
 from django.http import JsonResponse
 from django.core.mail import send_mail
 from django.shortcuts import render, redirect
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 
 from .models import ChatUser, BlockedUser, Report
 
@@ -55,6 +57,7 @@ def login_user(request):
 
     return render(request, "chat.html")
 
+@csrf_exempt
 def api_login(request):
 
     if request.method != "POST":
