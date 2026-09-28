@@ -10,6 +10,7 @@ class ChatUser(models.Model):
     is_online = models.BooleanField(default=False)
     matched_with = models.CharField(max_length=100, null=True, blank=True)
     last_seen = models.DateTimeField(null=True, blank=True)
+    connection_count = models.IntegerField(default=0)
 
     def __str__(self):
         return self.username
