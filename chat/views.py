@@ -4,7 +4,6 @@ from django.utils import timezone
 from django.http import JsonResponse
 from django.core.mail import send_mail
 from django.shortcuts import render, redirect
-from django.http import JsonResponse
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
 
@@ -17,9 +16,9 @@ from django.core.exceptions import ValidationError
 import random
 import os
 import requests
+
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-
 
 def reset_all_users(request):
     if request.GET.get("key") != "MessageXReset2026":
@@ -91,48 +90,26 @@ def api_find_random_chat(request):
 
     if request.method != "POST":
         return JsonResponse(
-            {
-                "success": False,
-                "message": "POST request required"
-            },
-            status=405
+            {"success": False, "message": "POST request required"}, status=405
         )
 
-    username = request.POST.get(
-        "username",
-        ""
-    ).strip().lower()
+    username = request.POST.get("username", "").strip().lower()
 
     if not username:
         return JsonResponse(
-            {
-                "success": False,
-                "message": "Username required"
-            },
-            status=400
+            {"success": False, "message": "Username required"}, status=400
         )
 
-    current_user = ChatUser.objects.filter(
-        username=username
-    ).first()
+    current_user = ChatUser.objects.filter(username=username).first()
 
     if not current_user:
-        return JsonResponse(
-            {
-                "success": False,
-                "message": "User not found"
-            },
-            status=404
-        )
+        return JsonResponse({"success": False, "message": "User not found"}, status=404)
 
     # ========================================================
     # ALREADY MATCHED CHECK
     # ========================================================
 
-    if (
-        current_user.is_matched
-        and current_user.matched_with
-    ):
+    if current_user.is_matched and current_user.matched_with:
 
         matched_user = ChatUser.objects.filter(
             username=current_user.matched_with
@@ -160,26 +137,16 @@ def api_find_random_chat(request):
 
     gender = current_user.gender
 
-    opposite_gender = (
-        "female"
-        if gender == "male"
-        else "male"
-    )
+    opposite_gender = "female" if gender == "male" else "male"
 
-    cutoff = (
-        timezone.now()
-        - timedelta(seconds=8)
-    )
+    cutoff = timezone.now() - timedelta(seconds=8)
 
     current_user.is_online = True
     current_user.last_seen = timezone.now()
     current_user.save()
 
     # Remove stale users
-    ChatUser.objects.filter(
-        is_online=True,
-        last_seen__lt=cutoff
-    ).update(
+    ChatUser.objects.filter(is_online=True, last_seen__lt=cutoff).update(
         is_online=False
     )
 
@@ -187,72 +154,36 @@ def api_find_random_chat(request):
     # BLOCKED USERS
     # ========================================================
 
-    blocked_user_ids = (
-        BlockedUser.objects
-        .filter(
-            blocker=current_user
-        )
-        .values_list(
-            "blocked_id",
-            flat=True
-        )
+    blocked_user_ids = BlockedUser.objects.filter(blocker=current_user).values_list(
+        "blocked_id", flat=True
     )
 
-    blocked_by_user_ids = (
-        BlockedUser.objects
-        .filter(
-            blocked=current_user
-        )
-        .values_list(
-            "blocker_id",
-            flat=True
-        )
+    blocked_by_user_ids = BlockedUser.objects.filter(blocked=current_user).values_list(
+        "blocker_id", flat=True
     )
 
-    excluded_user_ids = set(
-        blocked_user_ids
-    ).union(
-        set(blocked_by_user_ids)
-    )
+    excluded_user_ids = set(blocked_user_ids).union(set(blocked_by_user_ids))
 
     # ========================================================
     # FIND OPPOSITE GENDER
     # ========================================================
 
     users = (
-        ChatUser.objects
-        .filter(
+        ChatUser.objects.filter(
             gender=opposite_gender,
             is_matched=False,
             is_online=True,
             last_seen__gte=cutoff,
         )
-        .exclude(
-            username=username
-        )
-        .exclude(
-            id__in=excluded_user_ids
-        )
+        .exclude(username=username)
+        .exclude(id__in=excluded_user_ids)
     )
 
-    print(
-        "API MATCH DEBUG:",
-        username,
-        gender,
-        "looking for:",
-        opposite_gender
-    )
+    print("API MATCH DEBUG:", username, gender, "looking for:", opposite_gender)
 
     print(
         "AVAILABLE USERS:",
-        list(
-            users.values(
-                "username",
-                "gender",
-                "is_online",
-                "is_matched"
-            )
-        )
+        list(users.values("username", "gender", "is_online", "is_matched")),
     )
 
     # ========================================================
@@ -262,35 +193,24 @@ def api_find_random_chat(request):
     if not users.exists():
 
         return JsonResponse(
-            {
-                "success": True,
-                "matched": False,
-                "message":
-                    "Waiting for another user"
-            }
+            {"success": True, "matched": False, "message": "Waiting for another user"}
         )
 
     # ========================================================
     # CREATE MATCH
     # ========================================================
 
-    matched_user = random.choice(
-        list(users)
-    )
+    matched_user = random.choice(list(users))
 
     current_user.is_matched = True
-    current_user.matched_with = (
-        matched_user.username
-    )
+    current_user.matched_with = matched_user.username
     current_user.is_online = True
     current_user.last_seen = timezone.now()
 
     current_user.save()
 
     matched_user.is_matched = True
-    matched_user.matched_with = (
-        current_user.username
-    )
+    matched_user.matched_with = current_user.username
     matched_user.is_online = True
     matched_user.last_seen = timezone.now()
 
@@ -303,35 +223,24 @@ def api_find_random_chat(request):
     channel_layer = get_channel_layer()
 
     # Current user
-    async_to_sync(
-        channel_layer.group_send
-    )(
+    async_to_sync(channel_layer.group_send)(
         f"user_{current_user.username}",
         {
             "type": "match_found",
-            "matched_username":
-                matched_user.username,
+            "matched_username": matched_user.username,
         },
     )
 
     # Matched user
-    async_to_sync(
-        channel_layer.group_send
-    )(
+    async_to_sync(channel_layer.group_send)(
         f"user_{matched_user.username}",
         {
             "type": "match_found",
-            "matched_username":
-                current_user.username,
+            "matched_username": current_user.username,
         },
     )
 
-    print(
-        "MATCH CREATED:",
-        current_user.username,
-        "<-->",
-        matched_user.username
-    )
+    print("MATCH CREATED:", current_user.username, "<-->", matched_user.username)
 
     # ========================================================
     # RESPONSE TO CURRENT USER
@@ -341,12 +250,9 @@ def api_find_random_chat(request):
         {
             "success": True,
             "matched": True,
-            "username":
-                current_user.username,
-            "matched_username":
-                matched_user.username,
-            "matched_gender":
-                matched_user.gender,
+            "username": current_user.username,
+            "matched_username": matched_user.username,
+            "matched_gender": matched_user.gender,
         }
     )
 
@@ -495,62 +401,53 @@ def api_mobile_signup(request):
 def api_mobile_verify_otp(request):
 
     if request.method != "POST":
-        return JsonResponse({
-            "success": False,
-            "message": "POST request required"
-        }, status=405)
+        return JsonResponse(
+            {"success": False, "message": "POST request required"}, status=405
+        )
 
     otp = request.POST.get("otp", "").strip()
 
-    signup_data = MobileSignup.objects.filter(
-        otp=otp
-    ).order_by("-created_at").first()
+    signup_data = MobileSignup.objects.filter(otp=otp).order_by("-created_at").first()
 
     if not signup_data:
-        return JsonResponse({
-            "success": False,
-            "message": "Invalid or expired OTP"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Invalid or expired OTP"}, status=400
+        )
 
-    if ChatUser.objects.filter(
-        username=signup_data.username
-    ).exists():
+    if ChatUser.objects.filter(username=signup_data.username).exists():
         signup_data.delete()
 
-        return JsonResponse({
-            "success": False,
-            "message": "Username already exists"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Username already exists"}, status=400
+        )
 
-    if ChatUser.objects.filter(
-        email=signup_data.email
-    ).exists():
+    if ChatUser.objects.filter(email=signup_data.email).exists():
         signup_data.delete()
 
-        return JsonResponse({
-            "success": False,
-            "message": "Email already exists"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Email already exists"}, status=400
+        )
 
     from django.contrib.auth.hashers import make_password
 
     user = ChatUser.objects.create(
         username=signup_data.username,
         email=signup_data.email,
-        password=make_password(
-            signup_data.password
-        ),
+        password=make_password(signup_data.password),
         gender=signup_data.gender,
     )
 
     signup_data.delete()
 
-    return JsonResponse({
-        "success": True,
-        "message": "Account created successfully",
-        "username": user.username,
-        "gender": user.gender
-    })
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Account created successfully",
+            "username": user.username,
+            "gender": user.gender,
+        }
+    )
+
 
 @csrf_exempt
 def api_logout(request):
@@ -851,16 +748,39 @@ def chat(request):
 
 
 def logout_user(request):
+
     username = request.session.get("username")
 
     if username:
+
         current_user = ChatUser.objects.filter(username=username).first()
 
         if current_user:
+
+            matched_username = current_user.matched_with
+
             current_user.is_online = False
             current_user.is_matched = False
             current_user.matched_with = None
             current_user.save()
+
+            # Matched user-ஐயும் disconnect பண்ண
+            if matched_username:
+
+                partner = ChatUser.objects.filter(username=matched_username).first()
+
+                if partner:
+
+                    partner.is_matched = False
+                    partner.matched_with = None
+                    partner.save()
+
+                    # Partner-க்கு chat ended signal
+                    channel_layer = get_channel_layer()
+
+                    async_to_sync(channel_layer.group_send)(
+                        f"user_{matched_username}", {"type": "match_ended"}
+                    )
 
     request.session.flush()
 
