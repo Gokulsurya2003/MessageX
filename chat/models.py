@@ -61,3 +61,15 @@ class Report(models.Model):
 
     def __str__(self):
         return f"{self.reporter.username} reported {self.reported.username}"
+
+
+class MobileSignup(models.Model):
+    username = models.CharField(max_length=100)
+    email = models.EmailField()
+    password = models.CharField(max_length=128)
+    gender = models.CharField(max_length=10)
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.username

@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import ChatUser, BlockedUser, Report
+from .models import ChatUser, BlockedUser, Report, MobileSignup
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.validators import validate_email
@@ -20,15 +20,14 @@ import requests
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
+
 def reset_all_users(request):
     if request.GET.get("key") != "MessageXReset2026":
         return JsonResponse({"error": "Unauthorized"}, status=403)
 
     ChatUser.objects.all().delete()
 
-    return JsonResponse({
-        "message": "All accounts deleted successfully!"
-    })
+    return JsonResponse({"message": "All accounts deleted successfully!"})
 
 
 def login_user(request):
@@ -50,30 +49,24 @@ def login_user(request):
 
             return redirect("home")
 
-        return render(
-            request,
-            "chat.html",
-            {"error": "Invalid username or password!"}
-        )
+        return render(request, "chat.html", {"error": "Invalid username or password!"})
 
     return render(request, "chat.html")
+
 
 @csrf_exempt
 def api_login(request):
 
     if request.method != "POST":
-        return JsonResponse({
-            "success": False,
-            "message": "POST request required"
-        }, status=405)
+        return JsonResponse(
+            {"success": False, "message": "POST request required"}, status=405
+        )
 
     username = request.POST.get("username", "").strip().lower()
     password = request.POST.get("password", "")
     print("API LOGIN:", username, password)
 
-    user = ChatUser.objects.filter(
-        username=username
-    ).first()
+    user = ChatUser.objects.filter(username=username).first()
 
     if user and check_password(password, user.password):
 
@@ -84,51 +77,38 @@ def api_login(request):
         request.session["username"] = user.username
         request.session["gender"] = user.gender
 
-        return JsonResponse({
-            "success": True,
-            "username": user.username,
-            "gender": user.gender
-        })
+        return JsonResponse(
+            {"success": True, "username": user.username, "gender": user.gender}
+        )
 
-    return JsonResponse({
-        "success": False,
-        "message": "Invalid username or password!"
-    }, status=401)
+    return JsonResponse(
+        {"success": False, "message": "Invalid username or password!"}, status=401
+    )
+
 
 @csrf_exempt
 def api_find_random_chat(request):
 
     if request.method != "POST":
-        return JsonResponse({
-            "success": False,
-            "message": "POST request required"
-        }, status=405)
+        return JsonResponse(
+            {"success": False, "message": "POST request required"}, status=405
+        )
 
     username = request.POST.get("username", "").strip().lower()
 
     if not username:
-        return JsonResponse({
-            "success": False,
-            "message": "Username required"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Username required"}, status=400
+        )
 
-    current_user = ChatUser.objects.filter(
-        username=username
-    ).first()
+    current_user = ChatUser.objects.filter(username=username).first()
 
     if not current_user:
-        return JsonResponse({
-            "success": False,
-            "message": "User not found"
-        }, status=404)
+        return JsonResponse({"success": False, "message": "User not found"}, status=404)
 
     gender = current_user.gender
 
-    opposite_gender = (
-        "female"
-        if gender == "male"
-        else "male"
-    )
+    opposite_gender = "female" if gender == "male" else "male"
 
     cutoff = timezone.now() - timedelta(seconds=8)
 
@@ -136,49 +116,34 @@ def api_find_random_chat(request):
     current_user.last_seen = timezone.now()
     current_user.save()
 
-    ChatUser.objects.filter(
-        is_online=True,
-        last_seen__lt=cutoff
-    ).update(
+    ChatUser.objects.filter(is_online=True, last_seen__lt=cutoff).update(
         is_online=False
     )
 
-    blocked_user_ids = BlockedUser.objects.filter(
-        blocker=current_user
-    ).values_list(
-        "blocked_id",
-        flat=True
+    blocked_user_ids = BlockedUser.objects.filter(blocker=current_user).values_list(
+        "blocked_id", flat=True
     )
 
-    blocked_by_user_ids = BlockedUser.objects.filter(
-        blocked=current_user
-    ).values_list(
-        "blocker_id",
-        flat=True
+    blocked_by_user_ids = BlockedUser.objects.filter(blocked=current_user).values_list(
+        "blocker_id", flat=True
     )
 
-    excluded_user_ids = set(
-        blocked_user_ids
-    ).union(
-        set(blocked_by_user_ids)
-    )
+    excluded_user_ids = set(blocked_user_ids).union(set(blocked_by_user_ids))
 
-    users = ChatUser.objects.filter(
-        gender=opposite_gender,
-        is_matched=False,
-        is_online=True,
-        last_seen__gte=cutoff
-    ).exclude(
-        username=username
-    ).exclude(
-        id__in=excluded_user_ids
+    users = (
+        ChatUser.objects.filter(
+            gender=opposite_gender,
+            is_matched=False,
+            is_online=True,
+            last_seen__gte=cutoff,
+        )
+        .exclude(username=username)
+        .exclude(id__in=excluded_user_ids)
     )
 
     if users.exists():
 
-        matched_user = random.choice(
-            list(users)
-        )
+        matched_user = random.choice(list(users))
 
         current_user.is_matched = True
         current_user.matched_with = matched_user.username
@@ -190,9 +155,7 @@ def api_find_random_chat(request):
 
         channel_layer = get_channel_layer()
 
-        async_to_sync(
-            channel_layer.group_send
-        )(
+        async_to_sync(channel_layer.group_send)(
             f"user_{matched_user.username}",
             {
                 "type": "match_found",
@@ -200,46 +163,40 @@ def api_find_random_chat(request):
             },
         )
 
-        return JsonResponse({
-            "success": True,
-            "matched": True,
-            "username": current_user.username,
-            "matched_username": matched_user.username,
-            "matched_gender": matched_user.gender
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "matched": True,
+                "username": current_user.username,
+                "matched_username": matched_user.username,
+                "matched_gender": matched_user.gender,
+            }
+        )
 
-    return JsonResponse({
-        "success": True,
-        "matched": False,
-        "message": "Waiting for another user"
-    })
+    return JsonResponse(
+        {"success": True, "matched": False, "message": "Waiting for another user"}
+    )
+
 
 @csrf_exempt
 def api_disconnect_chat(request):
 
     if request.method != "POST":
-        return JsonResponse({
-            "success": False,
-            "message": "POST request required"
-        }, status=405)
+        return JsonResponse(
+            {"success": False, "message": "POST request required"}, status=405
+        )
 
     username = request.POST.get("username", "").strip().lower()
 
     if not username:
-        return JsonResponse({
-            "success": False,
-            "message": "Username required"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Username required"}, status=400
+        )
 
-    current_user = ChatUser.objects.filter(
-        username=username
-    ).first()
+    current_user = ChatUser.objects.filter(username=username).first()
 
     if not current_user:
-        return JsonResponse({
-            "success": False,
-            "message": "User not found"
-        }, status=404)
+        return JsonResponse({"success": False, "message": "User not found"}, status=404)
 
     matched_username = current_user.matched_with
 
@@ -253,9 +210,7 @@ def api_disconnect_chat(request):
     # Clear partner
     if matched_username:
 
-        partner = ChatUser.objects.filter(
-            username=matched_username
-        ).first()
+        partner = ChatUser.objects.filter(username=matched_username).first()
 
         if partner:
 
@@ -265,19 +220,13 @@ def api_disconnect_chat(request):
 
             channel_layer = get_channel_layer()
 
-            async_to_sync(
-                channel_layer.group_send
-            )(
-                f"user_{matched_username}",
-                {
-                    "type": "match_ended"
-                }
+            async_to_sync(channel_layer.group_send)(
+                f"user_{matched_username}", {"type": "match_ended"}
             )
 
-    return JsonResponse({
-        "success": True,
-        "message": "Chat disconnected successfully"
-    })
+    return JsonResponse({"success": True, "message": "Chat disconnected successfully"})
+
+
 # ============================================================
 # LOGOUT API
 # ============================================================
@@ -285,135 +234,89 @@ def api_disconnect_chat(request):
 # MOBILE SIGNUP API
 # ============================================================
 
+
 @csrf_exempt
 def api_mobile_signup(request):
 
     if request.method != "POST":
-        return JsonResponse({
-            "success": False,
-            "message": "POST request required"
-        }, status=405)
+        return JsonResponse(
+            {"success": False, "message": "POST request required"}, status=405
+        )
 
-    username = request.POST.get(
-        "username", ""
-    ).strip().lower()
+    username = request.POST.get("username", "").strip().lower()
 
-    email = request.POST.get(
-        "email", ""
-    ).strip().lower()
+    email = request.POST.get("email", "").strip().lower()
 
-    password = request.POST.get(
-        "password", ""
-    ).strip()
+    password = request.POST.get("password", "").strip()
 
-    gender = request.POST.get(
-        "gender", ""
-    ).strip().lower()
+    gender = request.POST.get("gender", "").strip().lower()
 
     if not username or not email or not password or not gender:
-        return JsonResponse({
-            "success": False,
-            "message": "All fields are required"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "All fields are required"}, status=400
+        )
 
     if gender not in ["male", "female"]:
-        return JsonResponse({
-            "success": False,
-            "message": "Invalid gender"
-        }, status=400)
+        return JsonResponse({"success": False, "message": "Invalid gender"}, status=400)
 
-    if ChatUser.objects.filter(
-        username=username
-    ).exists():
+    if ChatUser.objects.filter(username=username).exists():
 
-        return JsonResponse({
-            "success": False,
-            "message": "Username already exists"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Username already exists"}, status=400
+        )
 
-    if ChatUser.objects.filter(
-        email=email
-    ).exists():
+    if ChatUser.objects.filter(email=email).exists():
 
-        return JsonResponse({
-            "success": False,
-            "message": "Email already exists"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Email already exists"}, status=400
+        )
 
     # Generate OTP
-    otp = str(
-        random.randint(100000, 999999)
-    )
+    otp = str(random.randint(100000, 999999))
 
     # Save signup details temporarily
-    request.session["mobile_signup_data"] = {
-        "username": username,
-        "email": email,
-        "password": password,
-        "gender": gender,
-        "otp": otp,
-    }
+    MobileSignup.objects.create(
+        username=username,
+        email=email,
+        password=password,
+        gender=gender,
+        otp=otp,
+    )
 
     # Send OTP using Brevo API
     response = requests.post(
         "https://api.brevo.com/v3/smtp/email",
-
         headers={
             "accept": "application/json",
             "api-key": os.getenv("BREVO_API_KEY"),
             "content-type": "application/json",
         },
-
         json={
-            "sender": {
-                "name": "MessageX",
-                "email": "suryagokul302@gmail.com"
-            },
-
-            "to": [
-                {
-                    "email": email
-                }
-            ],
-
+            "sender": {"name": "MessageX", "email": "suryagokul302@gmail.com"},
+            "to": [{"email": email}],
             "subject": "MessageX Email Verification Code",
-
-            "textContent": (
-                f"Your MessageX verification code is: {otp}"
-            ),
+            "textContent": (f"Your MessageX verification code is: {otp}"),
         },
     )
 
-    print(
-        "MOBILE BREVO STATUS:",
-        response.status_code
-    )
+    print("MOBILE BREVO STATUS:", response.status_code)
 
-    print(
-        "MOBILE BREVO RESPONSE:",
-        response.text
-    )
+    print("MOBILE BREVO RESPONSE:", response.text)
 
-    if response.status_code not in [
-        200,
-        201,
-        202
-    ]:
+    if response.status_code not in [200, 201, 202]:
 
-        return JsonResponse({
-            "success": False,
-            "message": "Unable to send verification email"
-        }, status=500)
+        return JsonResponse(
+            {"success": False, "message": "Unable to send verification email"},
+            status=500,
+        )
 
-    return JsonResponse({
-        "success": True,
-        "message": "OTP sent successfully"
-    })
+    return JsonResponse({"success": True, "message": "OTP sent successfully"})
 
 
 # ============================================================
 # MOBILE VERIFY OTP API
 # ============================================================
+
 
 @csrf_exempt
 def api_mobile_verify_otp(request):
@@ -426,33 +329,31 @@ def api_mobile_verify_otp(request):
 
     otp = request.POST.get("otp", "").strip()
 
-    signup_data = request.session.get(
-        "mobile_signup_data"
-    )
+    signup_data = MobileSignup.objects.filter(
+        otp=otp
+    ).order_by("-created_at").first()
 
     if not signup_data:
         return JsonResponse({
             "success": False,
-            "message": "Signup session expired"
-        }, status=400)
-
-    if otp != signup_data["otp"]:
-        return JsonResponse({
-            "success": False,
-            "message": "Invalid OTP"
+            "message": "Invalid or expired OTP"
         }, status=400)
 
     if ChatUser.objects.filter(
-        username=signup_data["username"]
+        username=signup_data.username
     ).exists():
+        signup_data.delete()
+
         return JsonResponse({
             "success": False,
             "message": "Username already exists"
         }, status=400)
 
     if ChatUser.objects.filter(
-        email=signup_data["email"]
+        email=signup_data.email
     ).exists():
+        signup_data.delete()
+
         return JsonResponse({
             "success": False,
             "message": "Email already exists"
@@ -461,18 +362,15 @@ def api_mobile_verify_otp(request):
     from django.contrib.auth.hashers import make_password
 
     user = ChatUser.objects.create(
-        username=signup_data["username"],
-        email=signup_data["email"],
+        username=signup_data.username,
+        email=signup_data.email,
         password=make_password(
-            signup_data["password"]
+            signup_data.password
         ),
-        gender=signup_data["gender"],
+        gender=signup_data.gender,
     )
 
-    request.session.pop(
-        "mobile_signup_data",
-        None
-    )
+    signup_data.delete()
 
     return JsonResponse({
         "success": True,
@@ -485,28 +383,21 @@ def api_mobile_verify_otp(request):
 def api_logout(request):
 
     if request.method != "POST":
-        return JsonResponse({
-            "success": False,
-            "message": "POST request required"
-        }, status=405)
+        return JsonResponse(
+            {"success": False, "message": "POST request required"}, status=405
+        )
 
     username = request.POST.get("username", "").strip().lower()
 
     if not username:
-        return JsonResponse({
-            "success": False,
-            "message": "Username required"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Username required"}, status=400
+        )
 
-    user = ChatUser.objects.filter(
-        username=username
-    ).first()
+    user = ChatUser.objects.filter(username=username).first()
 
     if not user:
-        return JsonResponse({
-            "success": False,
-            "message": "User not found"
-        }, status=404)
+        return JsonResponse({"success": False, "message": "User not found"}, status=404)
 
     user.is_online = False
     user.last_seen = timezone.now()
@@ -516,63 +407,45 @@ def api_logout(request):
 
     request.session.flush()
 
-    return JsonResponse({
-        "success": True,
-        "message": "Logged out successfully"
-    })
+    return JsonResponse({"success": True, "message": "Logged out successfully"})
 
 
 # ============================================================
 # BLOCK USER API
 # ============================================================
 
+
 @csrf_exempt
 def api_block_user(request):
 
     if request.method != "POST":
-        return JsonResponse({
-            "success": False,
-            "message": "POST request required"
-        }, status=405)
+        return JsonResponse(
+            {"success": False, "message": "POST request required"}, status=405
+        )
 
-    username = request.POST.get(
-        "username", ""
-    ).strip().lower()
+    username = request.POST.get("username", "").strip().lower()
 
-    blocked_username = request.POST.get(
-        "blocked_username", ""
-    ).strip().lower()
+    blocked_username = request.POST.get("blocked_username", "").strip().lower()
 
     if not username or not blocked_username:
-        return JsonResponse({
-            "success": False,
-            "message": "Username and blocked username required"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Username and blocked username required"},
+            status=400,
+        )
 
-    blocker = ChatUser.objects.filter(
-        username=username
-    ).first()
+    blocker = ChatUser.objects.filter(username=username).first()
 
-    blocked = ChatUser.objects.filter(
-        username=blocked_username
-    ).first()
+    blocked = ChatUser.objects.filter(username=blocked_username).first()
 
     if not blocker or not blocked:
-        return JsonResponse({
-            "success": False,
-            "message": "User not found"
-        }, status=404)
+        return JsonResponse({"success": False, "message": "User not found"}, status=404)
 
     if blocker.id == blocked.id:
-        return JsonResponse({
-            "success": False,
-            "message": "You cannot block yourself"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "You cannot block yourself"}, status=400
+        )
 
-    BlockedUser.objects.get_or_create(
-        blocker=blocker,
-        blocked=blocked
-    )
+    BlockedUser.objects.get_or_create(blocker=blocker, blocked=blocked)
 
     # Clear current user's match
     blocker.is_matched = False
@@ -588,88 +461,59 @@ def api_block_user(request):
 
         channel_layer = get_channel_layer()
 
-        async_to_sync(
-            channel_layer.group_send
-        )(
-            f"user_{blocked.username}",
-            {
-                "type": "match_ended"
-            }
+        async_to_sync(channel_layer.group_send)(
+            f"user_{blocked.username}", {"type": "match_ended"}
         )
 
-    return JsonResponse({
-        "success": True,
-        "message": "User blocked successfully"
-    })
+    return JsonResponse({"success": True, "message": "User blocked successfully"})
 
 
 # ============================================================
 # REPORT USER API
 # ============================================================
 
+
 @csrf_exempt
 def api_report_user(request):
 
     if request.method != "POST":
-        return JsonResponse({
-            "success": False,
-            "message": "POST request required"
-        }, status=405)
+        return JsonResponse(
+            {"success": False, "message": "POST request required"}, status=405
+        )
 
-    username = request.POST.get(
-        "username", ""
-    ).strip().lower()
+    username = request.POST.get("username", "").strip().lower()
 
-    reported_username = request.POST.get(
-        "reported_username", ""
-    ).strip().lower()
+    reported_username = request.POST.get("reported_username", "").strip().lower()
 
-    reason = request.POST.get(
-        "reason", ""
-    ).strip()
+    reason = request.POST.get("reason", "").strip()
 
     if not username or not reported_username:
-        return JsonResponse({
-            "success": False,
-            "message": "Username and reported username required"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Username and reported username required"},
+            status=400,
+        )
 
     if not reason:
-        return JsonResponse({
-            "success": False,
-            "message": "Report reason required"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "Report reason required"}, status=400
+        )
 
-    reporter = ChatUser.objects.filter(
-        username=username
-    ).first()
+    reporter = ChatUser.objects.filter(username=username).first()
 
-    reported = ChatUser.objects.filter(
-        username=reported_username
-    ).first()
+    reported = ChatUser.objects.filter(username=reported_username).first()
 
     if not reporter or not reported:
-        return JsonResponse({
-            "success": False,
-            "message": "User not found"
-        }, status=404)
+        return JsonResponse({"success": False, "message": "User not found"}, status=404)
 
     if reporter.id == reported.id:
-        return JsonResponse({
-            "success": False,
-            "message": "You cannot report yourself"
-        }, status=400)
+        return JsonResponse(
+            {"success": False, "message": "You cannot report yourself"}, status=400
+        )
 
-    Report.objects.create(
-        reporter=reporter,
-        reported=reported,
-        reason=reason
-    )
+    Report.objects.create(reporter=reporter, reported=reported, reason=reason)
 
-    return JsonResponse({
-        "success": True,
-        "message": "User reported successfully"
-    })
+    return JsonResponse({"success": True, "message": "User reported successfully"})
+
 
 def find_random_chat(request):
     username = request.session.get("username")
@@ -708,10 +552,7 @@ def find_random_chat(request):
     current_user.is_online = True
     current_user.save()
 
-    ChatUser.objects.filter(
-        is_online=True,
-        last_seen__lt=cutoff
-    ).update(
+    ChatUser.objects.filter(is_online=True, last_seen__lt=cutoff).update(
         is_online=False
     )
     # --------------------------------------------------
@@ -749,8 +590,10 @@ def find_random_chat(request):
     )
 
     print("MATCH DEBUG:", username, gender, "looking for:", opposite_gender)
-    print("AVAILABLE USERS:", list(users.values("username", "gender", "is_online", "is_matched")))
-
+    print(
+        "AVAILABLE USERS:",
+        list(users.values("username", "gender", "is_online", "is_matched")),
+    )
 
     if users.exists():
 
@@ -832,6 +675,8 @@ def home(request):
 
 def chat(request):
     return render(request, "chat.html")
+
+
 def logout_user(request):
     username = request.session.get("username")
 
@@ -901,10 +746,7 @@ def signup(request):
                 "content-type": "application/json",
             },
             json={
-                "sender": {
-                    "name": "MessageX",
-                    "email": "suryagokul302@gmail.com"
-                },
+                "sender": {"name": "MessageX", "email": "suryagokul302@gmail.com"},
                 "to": [{"email": email}],
                 "subject": "MessageX Email Verification Code",
                 "textContent": f"Your verification code is: {code}",
@@ -974,10 +816,7 @@ def forgot_password(request):
                 "content-type": "application/json",
             },
             json={
-                "sender": {
-                    "name": "MessageX",
-                    "email": "suryagokul302@gmail.com"
-                },
+                "sender": {"name": "MessageX", "email": "suryagokul302@gmail.com"},
                 "to": [{"email": email}],
                 "subject": "MessageX Password Reset Code",
                 "textContent": f"Your password reset code is: {code}",
@@ -997,6 +836,7 @@ def forgot_password(request):
         return redirect("verify_code")
 
     return render(request, "forgot-password.html")
+
 
 def verify_code(request):
     if request.method == "POST":
@@ -1035,7 +875,7 @@ def reset_password(request):
             return render(
                 request,
                 "reset-password.html",
-                {"error": "Password reset session expired. Please try again."}
+                {"error": "Password reset session expired. Please try again."},
             )
 
         email = email.replace("\\@", "@").strip()
@@ -1063,6 +903,7 @@ def reset_password(request):
         return redirect("chat")
 
     return render(request, "reset-password.html")
+
 
 def disconnect_chat(request):
     username = request.session.get("username")
@@ -1187,7 +1028,6 @@ def match_status(request):
 
     if not username:
         return JsonResponse({"matched": False})
-    
 
     current_user = ChatUser.objects.filter(username=username).first()
 
