@@ -6,6 +6,11 @@ urlpatterns = [path("", views.home,name="home"),
                path("chat.html", views.chat,name="chat"),
                path("login/", views.login_user, name="login"),
                path("api/login/", views.api_login, name="api_login"),
+               path(
+                    "api/find-random-chat/",
+                    views.api_find_random_chat,
+                    name="api_find_random_chat"
+                    ),
                path("find-random-chat/", views.find_random_chat, name="find_random_chat"),
                path("match-status/", views.match_status, name="match_status"),
                path("disconnect-chat/", views.disconnect_chat, name="disconnect_chat"),

@@ -94,6 +94,31 @@ def api_login(request):
         "message": "Invalid username or password!"
     }, status=401)
 
+@csrf_exempt
+def api_find_random_chat(request):
+
+    if request.method != "POST":
+        return JsonResponse({
+            "success": False,
+            "message": "POST request required"
+        }, status=405)
+
+    username = request.session.get("username")
+    gender = request.session.get("gender")
+
+    if not username or not gender:
+        return JsonResponse({
+            "success": False,
+            "message": "User not logged in"
+        }, status=401)
+
+    return JsonResponse({
+        "success": True,
+        "message": "Random chat API connected",
+        "username": username,
+        "gender": gender
+    })
+
 def find_random_chat(request):
     username = request.session.get("username")
     gender = request.session.get("gender")
