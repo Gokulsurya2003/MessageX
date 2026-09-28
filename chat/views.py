@@ -103,22 +103,115 @@ def api_find_random_chat(request):
             "message": "POST request required"
         }, status=405)
 
-    username = request.session.get("username")
-    gender = request.session.get("gender")
+    username = request.POST.get("username", "").strip().lower()
 
-    if not username or not gender:
+    if not username:
         return JsonResponse({
             "success": False,
-            "message": "User not logged in"
-        }, status=401)
+            "message": "Username required"
+        }, status=400)
+
+    current_user = ChatUser.objects.filter(
+        username=username
+    ).first()
+
+    if not current_user:
+        return JsonResponse({
+            "success": False,
+            "message": "User not found"
+        }, status=404)
+
+    gender = current_user.gender
+
+    opposite_gender = (
+        "female"
+        if gender == "male"
+        else "male"
+    )
+
+    cutoff = timezone.now() - timedelta(seconds=8)
+
+    current_user.is_online = True
+    current_user.last_seen = timezone.now()
+    current_user.save()
+
+    ChatUser.objects.filter(
+        is_online=True,
+        last_seen__lt=cutoff
+    ).update(
+        is_online=False
+    )
+
+    blocked_user_ids = BlockedUser.objects.filter(
+        blocker=current_user
+    ).values_list(
+        "blocked_id",
+        flat=True
+    )
+
+    blocked_by_user_ids = BlockedUser.objects.filter(
+        blocked=current_user
+    ).values_list(
+        "blocker_id",
+        flat=True
+    )
+
+    excluded_user_ids = set(
+        blocked_user_ids
+    ).union(
+        set(blocked_by_user_ids)
+    )
+
+    users = ChatUser.objects.filter(
+        gender=opposite_gender,
+        is_matched=False,
+        is_online=True,
+        last_seen__gte=cutoff
+    ).exclude(
+        username=username
+    ).exclude(
+        id__in=excluded_user_ids
+    )
+
+    if users.exists():
+
+        matched_user = random.choice(
+            list(users)
+        )
+
+        current_user.is_matched = True
+        current_user.matched_with = matched_user.username
+        current_user.save()
+
+        matched_user.is_matched = True
+        matched_user.matched_with = current_user.username
+        matched_user.save()
+
+        channel_layer = get_channel_layer()
+
+        async_to_sync(
+            channel_layer.group_send
+        )(
+            f"user_{matched_user.username}",
+            {
+                "type": "match_found",
+                "matched_username": current_user.username,
+            },
+        )
+
+        return JsonResponse({
+            "success": True,
+            "matched": True,
+            "username": current_user.username,
+            "matched_username": matched_user.username,
+            "matched_gender": matched_user.gender
+        })
 
     return JsonResponse({
         "success": True,
-        "message": "Random chat API connected",
-        "username": username,
-        "gender": gender
+        "matched": False,
+        "message": "Waiting for another user"
     })
-
 def find_random_chat(request):
     username = request.session.get("username")
     gender = request.session.get("gender")
