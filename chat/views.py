@@ -294,10 +294,21 @@ def api_mobile_signup(request):
             "message": "POST request required"
         }, status=405)
 
-    username = request.POST.get("username", "").strip().lower()
-    email = request.POST.get("email", "").strip().lower()
-    password = request.POST.get("password", "").strip()
-    gender = request.POST.get("gender", "").strip().lower()
+    username = request.POST.get(
+        "username", ""
+    ).strip().lower()
+
+    email = request.POST.get(
+        "email", ""
+    ).strip().lower()
+
+    password = request.POST.get(
+        "password", ""
+    ).strip()
+
+    gender = request.POST.get(
+        "gender", ""
+    ).strip().lower()
 
     if not username or not email or not password or not gender:
         return JsonResponse({
@@ -311,20 +322,30 @@ def api_mobile_signup(request):
             "message": "Invalid gender"
         }, status=400)
 
-    if ChatUser.objects.filter(username=username).exists():
+    if ChatUser.objects.filter(
+        username=username
+    ).exists():
+
         return JsonResponse({
             "success": False,
             "message": "Username already exists"
         }, status=400)
 
-    if ChatUser.objects.filter(email=email).exists():
+    if ChatUser.objects.filter(
+        email=email
+    ).exists():
+
         return JsonResponse({
             "success": False,
             "message": "Email already exists"
         }, status=400)
 
-    otp = str(random.randint(100000, 999999))
+    # Generate OTP
+    otp = str(
+        random.randint(100000, 999999)
+    )
 
+    # Save signup details temporarily
     request.session["mobile_signup_data"] = {
         "username": username,
         "email": email,
@@ -333,13 +354,56 @@ def api_mobile_signup(request):
         "otp": otp,
     }
 
-    send_mail(
-        "MessageX Email Verification Code",
-        f"Your MessageX verification code is: {otp}",
-        settings.DEFAULT_FROM_EMAIL,
-        [email],
-        fail_silently=False,
+    # Send OTP using Brevo API
+    response = requests.post(
+        "https://api.brevo.com/v3/smtp/email",
+
+        headers={
+            "accept": "application/json",
+            "api-key": os.getenv("BREVO_API_KEY"),
+            "content-type": "application/json",
+        },
+
+        json={
+            "sender": {
+                "name": "MessageX",
+                "email": "suryagokul302@gmail.com"
+            },
+
+            "to": [
+                {
+                    "email": email
+                }
+            ],
+
+            "subject": "MessageX Email Verification Code",
+
+            "textContent": (
+                f"Your MessageX verification code is: {otp}"
+            ),
+        },
     )
+
+    print(
+        "MOBILE BREVO STATUS:",
+        response.status_code
+    )
+
+    print(
+        "MOBILE BREVO RESPONSE:",
+        response.text
+    )
+
+    if response.status_code not in [
+        200,
+        201,
+        202
+    ]:
+
+        return JsonResponse({
+            "success": False,
+            "message": "Unable to send verification email"
+        }, status=500)
 
     return JsonResponse({
         "success": True,
