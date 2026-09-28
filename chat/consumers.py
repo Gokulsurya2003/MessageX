@@ -1,7 +1,7 @@
 import asyncio
 import json
-
 from datetime import timedelta
+from urllib.parse import parse_qs
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
@@ -14,11 +14,13 @@ from .models import ChatUser
 class ChatConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
+
         self.room_group_name = "random_chat"
 
         self.username = await self.get_username()
 
         if self.username:
+
             self.user_group_name = f"user_{self.username}"
 
             await self.channel_layer.group_add(
@@ -51,10 +53,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if self.username:
 
-            # Get current match before marking offline
             matched_username = await self.get_matched_username()
 
-            # Temporarily mark user offline
             await self.set_online(False)
 
             print(
@@ -62,8 +62,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 self.username
             )
 
-            # Do not immediately clear match.
-            # This allows page refresh to reconnect.
             if matched_username:
 
                 asyncio.create_task(
@@ -87,14 +85,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         matched_username
     ):
 
-        # Give the browser time to reconnect
-        # after a page refresh.
         await asyncio.sleep(8)
 
         still_online = await self.check_user_online()
 
-        # User came back online.
-        # Keep the existing match.
         if still_online:
 
             print(
@@ -104,8 +98,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             return
 
-        # User did not reconnect.
-        # Now end the match.
         await self.clear_match_for_both(
             matched_username
         )
@@ -127,7 +119,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         data = json.loads(text_data)
 
-        # Heartbeat
         if data.get("type") == "heartbeat":
 
             await self.update_heartbeat()
@@ -145,7 +136,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message
         )
 
-        # Check active reciprocal match
         matched_username = await self.get_active_match()
 
         if not matched_username:
@@ -162,7 +152,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             return
 
-        # Send message to current user's group
         await self.channel_layer.group_send(
             self.user_group_name,
             {
@@ -172,7 +161,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }
         )
 
-        # Send message ONLY to matched user
         await self.channel_layer.group_send(
             f"user_{matched_username}",
             {
@@ -214,9 +202,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_username(self):
 
-        return self.scope[
-            "session"
-        ].get("username")
+        username = self.scope["session"].get("username")
+
+        if username:
+            return username
+
+        query_string = self.scope.get(
+            "query_string",
+            b""
+        ).decode()
+
+        params = parse_qs(query_string)
+
+        username_list = params.get("username")
+
+        if username_list:
+            return username_list[0]
+
+        return None
 
     @database_sync_to_async
     def set_online(self, status):
@@ -363,8 +366,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not partner:
             return None
 
-        # Both users must still be matched
-        # to each other and partner must be online.
         if (
             partner.is_matched
             and partner.matched_with == self.username
