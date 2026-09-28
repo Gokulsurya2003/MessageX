@@ -212,6 +212,72 @@ def api_find_random_chat(request):
         "matched": False,
         "message": "Waiting for another user"
     })
+
+@csrf_exempt
+def api_disconnect_chat(request):
+
+    if request.method != "POST":
+        return JsonResponse({
+            "success": False,
+            "message": "POST request required"
+        }, status=405)
+
+    username = request.POST.get("username", "").strip().lower()
+
+    if not username:
+        return JsonResponse({
+            "success": False,
+            "message": "Username required"
+        }, status=400)
+
+    current_user = ChatUser.objects.filter(
+        username=username
+    ).first()
+
+    if not current_user:
+        return JsonResponse({
+            "success": False,
+            "message": "User not found"
+        }, status=404)
+
+    matched_username = current_user.matched_with
+
+    # Clear current user
+    current_user.is_matched = False
+    current_user.matched_with = None
+    current_user.is_online = True
+    current_user.last_seen = timezone.now()
+    current_user.save()
+
+    # Clear partner
+    if matched_username:
+
+        partner = ChatUser.objects.filter(
+            username=matched_username
+        ).first()
+
+        if partner:
+
+            partner.is_matched = False
+            partner.matched_with = None
+            partner.save()
+
+            channel_layer = get_channel_layer()
+
+            async_to_sync(
+                channel_layer.group_send
+            )(
+                f"user_{matched_username}",
+                {
+                    "type": "match_ended"
+                }
+            )
+
+    return JsonResponse({
+        "success": True,
+        "message": "Chat disconnected successfully"
+    })
+
 def find_random_chat(request):
     username = request.session.get("username")
     gender = request.session.get("gender")
