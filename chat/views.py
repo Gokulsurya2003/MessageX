@@ -55,6 +55,41 @@ def login_user(request):
 
     return render(request, "chat.html")
 
+def api_login(request):
+
+    if request.method != "POST":
+        return JsonResponse({
+            "success": False,
+            "message": "POST request required"
+        }, status=405)
+
+    username = request.POST.get("username", "").strip().lower()
+    password = request.POST.get("password", "")
+
+    user = ChatUser.objects.filter(
+        username=username
+    ).first()
+
+    if user and check_password(password, user.password):
+
+        user.is_online = True
+        user.last_seen = timezone.now()
+        user.save()
+
+        request.session["username"] = user.username
+        request.session["gender"] = user.gender
+
+        return JsonResponse({
+            "success": True,
+            "username": user.username,
+            "gender": user.gender
+        })
+
+    return JsonResponse({
+        "success": False,
+        "message": "Invalid username or password!"
+    }, status=401)
+
 def find_random_chat(request):
     username = request.session.get("username")
     gender = request.session.get("gender")
