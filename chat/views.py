@@ -280,6 +280,141 @@ def api_disconnect_chat(request):
 # ============================================================
 # LOGOUT API
 # ============================================================
+# ============================================================
+# MOBILE SIGNUP API
+# ============================================================
+
+@csrf_exempt
+def api_mobile_signup(request):
+
+    if request.method != "POST":
+        return JsonResponse({
+            "success": False,
+            "message": "POST request required"
+        }, status=405)
+
+    username = request.POST.get("username", "").strip().lower()
+    email = request.POST.get("email", "").strip().lower()
+    password = request.POST.get("password", "").strip()
+    gender = request.POST.get("gender", "").strip().lower()
+
+    if not username or not email or not password or not gender:
+        return JsonResponse({
+            "success": False,
+            "message": "All fields are required"
+        }, status=400)
+
+    if gender not in ["male", "female"]:
+        return JsonResponse({
+            "success": False,
+            "message": "Invalid gender"
+        }, status=400)
+
+    if ChatUser.objects.filter(username=username).exists():
+        return JsonResponse({
+            "success": False,
+            "message": "Username already exists"
+        }, status=400)
+
+    if ChatUser.objects.filter(email=email).exists():
+        return JsonResponse({
+            "success": False,
+            "message": "Email already exists"
+        }, status=400)
+
+    otp = str(random.randint(100000, 999999))
+
+    request.session["mobile_signup_data"] = {
+        "username": username,
+        "email": email,
+        "password": password,
+        "gender": gender,
+        "otp": otp,
+    }
+
+    send_mail(
+        "MessageX Email Verification Code",
+        f"Your MessageX verification code is: {otp}",
+        settings.DEFAULT_FROM_EMAIL,
+        [email],
+        fail_silently=False,
+    )
+
+    return JsonResponse({
+        "success": True,
+        "message": "OTP sent successfully"
+    })
+
+
+# ============================================================
+# MOBILE VERIFY OTP API
+# ============================================================
+
+@csrf_exempt
+def api_mobile_verify_otp(request):
+
+    if request.method != "POST":
+        return JsonResponse({
+            "success": False,
+            "message": "POST request required"
+        }, status=405)
+
+    otp = request.POST.get("otp", "").strip()
+
+    signup_data = request.session.get(
+        "mobile_signup_data"
+    )
+
+    if not signup_data:
+        return JsonResponse({
+            "success": False,
+            "message": "Signup session expired"
+        }, status=400)
+
+    if otp != signup_data["otp"]:
+        return JsonResponse({
+            "success": False,
+            "message": "Invalid OTP"
+        }, status=400)
+
+    if ChatUser.objects.filter(
+        username=signup_data["username"]
+    ).exists():
+        return JsonResponse({
+            "success": False,
+            "message": "Username already exists"
+        }, status=400)
+
+    if ChatUser.objects.filter(
+        email=signup_data["email"]
+    ).exists():
+        return JsonResponse({
+            "success": False,
+            "message": "Email already exists"
+        }, status=400)
+
+    from django.contrib.auth.hashers import make_password
+
+    user = ChatUser.objects.create(
+        username=signup_data["username"],
+        email=signup_data["email"],
+        password=make_password(
+            signup_data["password"]
+        ),
+        gender=signup_data["gender"],
+    )
+
+    request.session.pop(
+        "mobile_signup_data",
+        None
+    )
+
+    return JsonResponse({
+        "success": True,
+        "message": "Account created successfully",
+        "username": user.username,
+        "gender": user.gender
+    })
 
 @csrf_exempt
 def api_logout(request):

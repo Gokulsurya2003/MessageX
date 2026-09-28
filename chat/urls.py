@@ -33,6 +33,17 @@ urlpatterns = [path("", views.home,name="home"),
                     views.api_report_user,
                     name="api_report_user"
                     ),
+               path(
+                    "api/mobile-signup/",
+                    views.api_mobile_signup,
+                    name="api_mobile_signup"
+                    ),
+
+               path(
+                    "api/mobile-verify-otp/",
+                    views.api_mobile_verify_otp,
+                    name="api_mobile_verify_otp"
+                    ),
                path("find-random-chat/", views.find_random_chat, name="find_random_chat"),
                path("match-status/", views.match_status, name="match_status"),
                path("disconnect-chat/", views.disconnect_chat, name="disconnect_chat"),
