@@ -65,6 +65,7 @@ def api_login(request):
 
     username = request.POST.get("username", "").strip().lower()
     password = request.POST.get("password", "")
+    print("API LOGIN:", username, password)
 
     user = ChatUser.objects.filter(
         username=username
