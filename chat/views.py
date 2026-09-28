@@ -277,6 +277,199 @@ def api_disconnect_chat(request):
         "success": True,
         "message": "Chat disconnected successfully"
     })
+# ============================================================
+# LOGOUT API
+# ============================================================
+
+@csrf_exempt
+def api_logout(request):
+
+    if request.method != "POST":
+        return JsonResponse({
+            "success": False,
+            "message": "POST request required"
+        }, status=405)
+
+    username = request.POST.get("username", "").strip().lower()
+
+    if not username:
+        return JsonResponse({
+            "success": False,
+            "message": "Username required"
+        }, status=400)
+
+    user = ChatUser.objects.filter(
+        username=username
+    ).first()
+
+    if not user:
+        return JsonResponse({
+            "success": False,
+            "message": "User not found"
+        }, status=404)
+
+    user.is_online = False
+    user.last_seen = timezone.now()
+    user.is_matched = False
+    user.matched_with = None
+    user.save()
+
+    request.session.flush()
+
+    return JsonResponse({
+        "success": True,
+        "message": "Logged out successfully"
+    })
+
+
+# ============================================================
+# BLOCK USER API
+# ============================================================
+
+@csrf_exempt
+def api_block_user(request):
+
+    if request.method != "POST":
+        return JsonResponse({
+            "success": False,
+            "message": "POST request required"
+        }, status=405)
+
+    username = request.POST.get(
+        "username", ""
+    ).strip().lower()
+
+    blocked_username = request.POST.get(
+        "blocked_username", ""
+    ).strip().lower()
+
+    if not username or not blocked_username:
+        return JsonResponse({
+            "success": False,
+            "message": "Username and blocked username required"
+        }, status=400)
+
+    blocker = ChatUser.objects.filter(
+        username=username
+    ).first()
+
+    blocked = ChatUser.objects.filter(
+        username=blocked_username
+    ).first()
+
+    if not blocker or not blocked:
+        return JsonResponse({
+            "success": False,
+            "message": "User not found"
+        }, status=404)
+
+    if blocker.id == blocked.id:
+        return JsonResponse({
+            "success": False,
+            "message": "You cannot block yourself"
+        }, status=400)
+
+    BlockedUser.objects.get_or_create(
+        blocker=blocker,
+        blocked=blocked
+    )
+
+    # Clear current user's match
+    blocker.is_matched = False
+    blocker.matched_with = None
+    blocker.save()
+
+    # Clear blocked user's match if they are matched together
+    if blocked.matched_with == blocker.username:
+
+        blocked.is_matched = False
+        blocked.matched_with = None
+        blocked.save()
+
+        channel_layer = get_channel_layer()
+
+        async_to_sync(
+            channel_layer.group_send
+        )(
+            f"user_{blocked.username}",
+            {
+                "type": "match_ended"
+            }
+        )
+
+    return JsonResponse({
+        "success": True,
+        "message": "User blocked successfully"
+    })
+
+
+# ============================================================
+# REPORT USER API
+# ============================================================
+
+@csrf_exempt
+def api_report_user(request):
+
+    if request.method != "POST":
+        return JsonResponse({
+            "success": False,
+            "message": "POST request required"
+        }, status=405)
+
+    username = request.POST.get(
+        "username", ""
+    ).strip().lower()
+
+    reported_username = request.POST.get(
+        "reported_username", ""
+    ).strip().lower()
+
+    reason = request.POST.get(
+        "reason", ""
+    ).strip()
+
+    if not username or not reported_username:
+        return JsonResponse({
+            "success": False,
+            "message": "Username and reported username required"
+        }, status=400)
+
+    if not reason:
+        return JsonResponse({
+            "success": False,
+            "message": "Report reason required"
+        }, status=400)
+
+    reporter = ChatUser.objects.filter(
+        username=username
+    ).first()
+
+    reported = ChatUser.objects.filter(
+        username=reported_username
+    ).first()
+
+    if not reporter or not reported:
+        return JsonResponse({
+            "success": False,
+            "message": "User not found"
+        }, status=404)
+
+    if reporter.id == reported.id:
+        return JsonResponse({
+            "success": False,
+            "message": "You cannot report yourself"
+        }, status=400)
+
+    Report.objects.create(
+        reporter=reporter,
+        reported=reported,
+        reason=reason
+    )
+
+    return JsonResponse({
+        "success": True,
+        "message": "User reported successfully"
+    })
 
 def find_random_chat(request):
     username = request.session.get("username")
