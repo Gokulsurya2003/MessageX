@@ -48,6 +48,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if self.username:
 
+            # Get partner before removing this connection
             matched_username = await self.get_matched_username()
 
             remaining_connections = await self.remove_connection()
@@ -58,11 +59,31 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 remaining_connections
             )
 
+            # -------------------------------------------------
+            # USER COMPLETELY OFFLINE
+            # -------------------------------------------------
+            # If this was the user's last WebSocket connection,
+            # immediately end the active match.
+            # -------------------------------------------------
+
             if remaining_connections == 0 and matched_username:
-                asyncio.create_task(
-                    self.delayed_match_cleanup(
-                        matched_username
-                    )
+
+                await self.clear_match_for_both(
+                    matched_username
+                )
+
+                # Tell partner immediately
+                await self.channel_layer.group_send(
+                    f"user_{matched_username}",
+                    {
+                        "type": "match_ended"
+                    }
+                )
+
+                print(
+                    "MATCH ENDED - USER OFFLINE:",
+                    self.username,
+                    matched_username
                 )
 
             await self.channel_layer.group_discard(
@@ -75,39 +96,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.channel_name
         )
 
-    async def delayed_match_cleanup(self, matched_username):
-
-        await asyncio.sleep(8)
-
-        connection_count = await self.get_connection_count()
-
-        if connection_count > 0:
-            print(
-                "USER RECONNECTED - KEEP MATCH:",
-                self.username
-            )
-            return
-
-        await self.clear_match_for_both(
-            matched_username
-        )
-
-        await self.channel_layer.group_send(
-            f"user_{matched_username}",
-            {
-                "type": "match_ended"
-            }
-        )
-
-        print(
-            "MATCH ENDED - USER OFFLINE:",
-            self.username,
-            matched_username
-        )
-
     async def receive(self, text_data):
 
         data = json.loads(text_data)
+
+        # -------------------------------------------------
+        # HEARTBEAT
+        # -------------------------------------------------
 
         if data.get("type") == "heartbeat":
             await self.update_heartbeat()
@@ -137,6 +132,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             return
 
+        # Send to current user's connected sockets
         await self.channel_layer.group_send(
             self.user_group_name,
             {
@@ -146,6 +142,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }
         )
 
+        # Send to partner
         await self.channel_layer.group_send(
             f"user_{matched_username}",
             {
@@ -170,8 +167,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(
             text_data=json.dumps({
                 "type": "match_found",
-                "matched_username":
-                    event["matched_username"]
+                "matched_username": event["matched_username"]
             })
         )
 
@@ -182,6 +178,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "type": "match_ended"
             })
         )
+
+    # =========================================================
+    # GET USERNAME
+    # =========================================================
 
     @database_sync_to_async
     def get_username(self):
@@ -209,6 +209,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         return None
 
+    # =========================================================
+    # ADD CONNECTION
+    # =========================================================
+
     @database_sync_to_async
     def add_connection(self):
 
@@ -234,6 +238,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "CONNECTION ADDED:",
                 self.username
             )
+
+    # =========================================================
+    # REMOVE CONNECTION
+    # =========================================================
 
     @database_sync_to_async
     def remove_connection(self):
@@ -278,6 +286,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         return new_count
 
+    # =========================================================
+    # CONNECTION COUNT
+    # =========================================================
+
     @database_sync_to_async
     def get_connection_count(self):
 
@@ -289,6 +301,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return 0
 
         return user.connection_count
+
+    # =========================================================
+    # HEARTBEAT CHECK
+    # =========================================================
 
     @database_sync_to_async
     def check_heartbeat(self):
@@ -305,6 +321,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         return user.last_seen < cutoff
+
+    # =========================================================
+    # HEARTBEAT MONITOR
+    # =========================================================
 
     async def monitor_heartbeat(self):
 
@@ -330,6 +350,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except asyncio.CancelledError:
             pass
 
+    # =========================================================
+    # SET OFFLINE
+    # =========================================================
+
     @database_sync_to_async
     def set_offline(self):
 
@@ -352,6 +376,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 user.username
             )
 
+    # =========================================================
+    # UPDATE HEARTBEAT
+    # =========================================================
+
     @database_sync_to_async
     def update_heartbeat(self):
 
@@ -371,6 +399,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 ]
             )
 
+    # =========================================================
+    # GET MATCHED USERNAME
+    # =========================================================
+
     @database_sync_to_async
     def get_matched_username(self):
 
@@ -383,6 +415,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return user.matched_with
 
         return None
+
+    # =========================================================
+    # GET ACTIVE MATCH
+    # =========================================================
 
     @database_sync_to_async
     def get_active_match(self):
@@ -411,6 +447,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         return None
 
+    # =========================================================
+    # CLEAR MATCH FOR BOTH USERS
+    # =========================================================
+
     @database_sync_to_async
     def clear_match_for_both(
         self,
@@ -432,7 +472,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 current_user.is_matched = False
                 current_user.matched_with = None
 
-                current_user.save()
+                current_user.save(
+                    update_fields=[
+                        "is_matched",
+                        "matched_with"
+                    ]
+                )
 
         if partner:
 
@@ -441,4 +486,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 partner.is_matched = False
                 partner.matched_with = None
 
-                partner.save()
+                partner.save(
+                    update_fields=[
+                        "is_matched",
+                        "matched_with"
+                    ]
+                )
