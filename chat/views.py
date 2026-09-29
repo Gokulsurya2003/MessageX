@@ -1,3 +1,8 @@
+import json
+import random
+import os
+import requests
+
 from datetime import timedelta
 
 from django.utils import timezone
@@ -6,16 +11,13 @@ from django.core.mail import send_mail
 from django.shortcuts import render, redirect
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from .models import ChatUser, BlockedUser, Report, MobileSignup
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
-
-import random
-import os
-import requests
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -86,226 +88,239 @@ def api_login(request):
 
 
 @csrf_exempt
+@require_POST
 def api_find_random_chat(request):
+    try:
+        data = json.loads(request.body)
+        username = data.get("username", "").strip().lower()
 
-    if request.method != "POST":
-        return JsonResponse(
-            {"success": False, "message": "POST request required"}, status=405
-        )
-
-    username = request.POST.get("username", "").strip().lower()
-
-    if not username:
-        return JsonResponse(
-            {"success": False, "message": "Username required"}, status=400
-        )
-
-    current_user = ChatUser.objects.filter(username=username).first()
-
-    if not current_user:
-        return JsonResponse({"success": False, "message": "User not found"}, status=404)
-
-    # ========================================================
-    # ALREADY MATCHED CHECK
-    # ========================================================
-
-    if current_user.is_matched and current_user.matched_with:
-
-        matched_user = ChatUser.objects.filter(
-            username=current_user.matched_with
-        ).first()
-
-        if matched_user:
-
+        if not username:
             return JsonResponse(
-                {
+                {"success": False, "message": "Username required"},
+                status=400
+            )
+
+        current_user = ChatUser.objects.get(username=username)
+
+        channel_layer = get_channel_layer()
+
+        current_user.is_online = True
+        current_user.last_seen = timezone.now()
+        current_user.save(update_fields=["is_online", "last_seen"])
+
+        # Already matched
+        if current_user.is_matched and current_user.matched_with:
+            try:
+                matched_user = ChatUser.objects.get(
+                    username=current_user.matched_with
+                )
+
+                async_to_sync(channel_layer.group_send)(
+                    f"user_{current_user.username}",
+                    {
+                        "type": "match_found",
+                        "matched_username": matched_user.username,
+                    }
+                )
+
+                async_to_sync(channel_layer.group_send)(
+                    f"user_{matched_user.username}",
+                    {
+                        "type": "match_found",
+                        "matched_username": current_user.username,
+                    }
+                )
+
+                return JsonResponse({
                     "success": True,
                     "matched": True,
-                    "username": current_user.username,
                     "matched_username": matched_user.username,
-                    "matched_gender": matched_user.gender,
-                }
-            )
+                })
 
-        current_user.is_matched = False
-        current_user.matched_with = None
-        current_user.save()
+            except ChatUser.DoesNotExist:
+                current_user.is_matched = False
+                current_user.matched_with = None
+                current_user.save(
+                    update_fields=["is_matched", "matched_with"]
+                )
 
-    # ========================================================
-    # ONLINE STATUS
-    # ========================================================
+        # Users inactive for more than 8 seconds are ignored
+        stale_time = timezone.now() - timedelta(seconds=8)
 
-    gender = current_user.gender
+        # IMPORTANT:
+        # Database uses lowercase male / female
+        if current_user.gender.lower() == "male":
+            opposite_gender = "female"
+        else:
+            opposite_gender = "male"
 
-    opposite_gender = "female" if gender == "male" else "male"
-
-    cutoff = timezone.now() - timedelta(seconds=8)
-
-    current_user.is_online = True
-    current_user.last_seen = timezone.now()
-    current_user.save()
-
-    # Remove stale users
-    ChatUser.objects.filter(is_online=True, last_seen__lt=cutoff).update(
-        is_online=False
-    )
-
-    # ========================================================
-    # BLOCKED USERS
-    # ========================================================
-
-    blocked_user_ids = BlockedUser.objects.filter(blocker=current_user).values_list(
-        "blocked_id", flat=True
-    )
-
-    blocked_by_user_ids = BlockedUser.objects.filter(blocked=current_user).values_list(
-        "blocker_id", flat=True
-    )
-
-    excluded_user_ids = set(blocked_user_ids).union(set(blocked_by_user_ids))
-
-    # ========================================================
-    # FIND OPPOSITE GENDER
-    # ========================================================
-
-    users = (
-        ChatUser.objects.filter(
+        # Find opposite-gender available user
+        available_users = ChatUser.objects.filter(
             gender=opposite_gender,
-            is_matched=False,
             is_online=True,
-            last_seen__gte=cutoff,
-        )
-        .exclude(username=username)
-        .exclude(id__in=excluded_user_ids)
-    )
-
-    print("API MATCH DEBUG:", username, gender, "looking for:", opposite_gender)
-
-    print(
-        "AVAILABLE USERS:",
-        list(users.values("username", "gender", "is_online", "is_matched")),
-    )
-
-    # ========================================================
-    # NO USER FOUND
-    # ========================================================
-
-    if not users.exists():
-
-        return JsonResponse(
-            {"success": True, "matched": False, "message": "Waiting for another user"}
+            is_matched=False,
+            last_seen__gte=stale_time,
+        ).exclude(
+            username=current_user.username
         )
 
-    # ========================================================
-    # CREATE MATCH
-    # ========================================================
+        # Remove blocked users
+        blocked_by_current = BlockedUser.objects.filter(
+            blocker=current_user
+        ).values_list("blocked_id", flat=True)
 
-    matched_user = random.choice(list(users))
+        blocked_current = BlockedUser.objects.filter(
+            blocked=current_user
+        ).values_list("blocker_id", flat=True)
 
-    current_user.is_matched = True
-    current_user.matched_with = matched_user.username
-    current_user.is_online = True
-    current_user.last_seen = timezone.now()
+        excluded_ids = set(blocked_by_current).union(
+            set(blocked_current)
+        )
 
-    current_user.save()
+        available_users = available_users.exclude(
+            id__in=excluded_ids
+        )
 
-    matched_user.is_matched = True
-    matched_user.matched_with = current_user.username
-    matched_user.is_online = True
-    matched_user.last_seen = timezone.now()
+        matched_user = available_users.order_by("?").first()
 
-    matched_user.save()
+        # Nobody available
+        if not matched_user:
+            return JsonResponse({
+                "success": True,
+                "matched": False,
+                "message": "Searching for someone..."
+            })
 
-    # ========================================================
-    # SEND MATCH EVENT TO BOTH USERS
-    # ========================================================
+        # Create match for both users
+        current_user.is_matched = True
+        current_user.matched_with = matched_user.username
 
-    channel_layer = get_channel_layer()
+        matched_user.is_matched = True
+        matched_user.matched_with = current_user.username
 
-    # Current user
-    async_to_sync(channel_layer.group_send)(
-        f"user_{current_user.username}",
-        {
-            "type": "match_found",
-            "matched_username": matched_user.username,
-        },
-    )
+        current_user.save(
+            update_fields=["is_matched", "matched_with"]
+        )
 
-    # Matched user
-    async_to_sync(channel_layer.group_send)(
-        f"user_{matched_user.username}",
-        {
-            "type": "match_found",
-            "matched_username": current_user.username,
-        },
-    )
+        matched_user.save(
+            update_fields=["is_matched", "matched_with"]
+        )
 
-    print("MATCH CREATED:", current_user.username, "<-->", matched_user.username)
+        # Notify current user
+        async_to_sync(channel_layer.group_send)(
+            f"user_{current_user.username}",
+            {
+                "type": "match_found",
+                "matched_username": matched_user.username,
+            }
+        )
 
-    # ========================================================
-    # RESPONSE TO CURRENT USER
-    # ========================================================
+        # Notify matched user
+        async_to_sync(channel_layer.group_send)(
+            f"user_{matched_user.username}",
+            {
+                "type": "match_found",
+                "matched_username": current_user.username,
+            }
+        )
 
-    return JsonResponse(
-        {
+        return JsonResponse({
             "success": True,
             "matched": True,
-            "username": current_user.username,
             "matched_username": matched_user.username,
-            "matched_gender": matched_user.gender,
-        }
-    )
+        })
 
+    except ChatUser.DoesNotExist:
+        return JsonResponse({
+            "success": False,
+            "message": "User not found"
+        }, status=404)
+
+    except Exception as e:
+        print("api_find_random_chat error:", e)
+
+        return JsonResponse({
+            "success": False,
+            "message": str(e)
+        }, status=500)
 
 @csrf_exempt
+@require_POST
 def api_disconnect_chat(request):
+    try:
+        data = json.loads(request.body)
+        username = data.get("username", "").strip().lower()
 
-    if request.method != "POST":
-        return JsonResponse(
-            {"success": False, "message": "POST request required"}, status=405
-        )
-
-    username = request.POST.get("username", "").strip().lower()
-
-    if not username:
-        return JsonResponse(
-            {"success": False, "message": "Username required"}, status=400
-        )
-
-    current_user = ChatUser.objects.filter(username=username).first()
-
-    if not current_user:
-        return JsonResponse({"success": False, "message": "User not found"}, status=404)
-
-    matched_username = current_user.matched_with
-
-    # Clear current user
-    current_user.is_matched = False
-    current_user.matched_with = None
-    current_user.is_online = True
-    current_user.last_seen = timezone.now()
-    current_user.save()
-
-    # Clear partner
-    if matched_username:
-
-        partner = ChatUser.objects.filter(username=matched_username).first()
-
-        if partner:
-
-            partner.is_matched = False
-            partner.matched_with = None
-            partner.save()
-
-            channel_layer = get_channel_layer()
-
-            async_to_sync(channel_layer.group_send)(
-                f"user_{matched_username}", {"type": "match_ended"}
+        if not username:
+            return JsonResponse(
+                {"success": False, "message": "Username required"},
+                status=400
             )
 
-    return JsonResponse({"success": True, "message": "Chat disconnected successfully"})
+        current_user = ChatUser.objects.get(username=username)
 
+        channel_layer = get_channel_layer()
 
+        matched_username = current_user.matched_with
+
+        # Disconnect current user
+        current_user.is_matched = False
+        current_user.matched_with = None
+        current_user.save(
+            update_fields=["is_matched", "matched_with"]
+        )
+
+        # Disconnect partner
+        if matched_username:
+            try:
+                matched_user = ChatUser.objects.get(
+                    username=matched_username
+                )
+
+                if matched_user.matched_with == current_user.username:
+                    matched_user.is_matched = False
+                    matched_user.matched_with = None
+                    matched_user.save(
+                        update_fields=["is_matched", "matched_with"]
+                    )
+
+                # Tell partner
+                async_to_sync(channel_layer.group_send)(
+                    f"user_{matched_user.username}",
+                    {
+                        "type": "match_ended"
+                    }
+                )
+
+            except ChatUser.DoesNotExist:
+                pass
+
+        # Tell current user
+        async_to_sync(channel_layer.group_send)(
+            f"user_{current_user.username}",
+            {
+                "type": "match_ended"
+            }
+        )
+
+        return JsonResponse({
+            "success": True,
+            "message": "Chat disconnected successfully"
+        })
+
+    except ChatUser.DoesNotExist:
+        return JsonResponse({
+            "success": False,
+            "message": "User not found"
+        }, status=404)
+
+    except Exception as e:
+        print("api_disconnect_chat error:", e)
+
+        return JsonResponse({
+            "success": False,
+            "message": str(e)
+        }, status=500)
 # ============================================================
 # LOGOUT API
 # ============================================================
