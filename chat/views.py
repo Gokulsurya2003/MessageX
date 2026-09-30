@@ -905,7 +905,7 @@ def verify_signup(request):
 
     return render(request, "verify-signup.html")
 
-
+@csrf_exempt
 def forgot_password(request):
     if request.method == "POST":
 

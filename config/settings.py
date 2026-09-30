@@ -34,8 +34,8 @@ ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1"]
 
 CSRF_TRUSTED_ORIGINS = [
     "https://messagex-yk8p.onrender.com",
-    "http://localhost",
-    "http://127.0.0.1",
+    "http://localhost:*",
+    "http://127.0.0.1:*",
 ]
 
 
