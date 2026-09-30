@@ -22,23 +22,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if self.username:
             self.user_group_name = f"user_{self.username}"
 
-            await self.channel_layer.group_add(
-                self.user_group_name,
-                self.channel_name
-            )
+            await self.channel_layer.group_add(self.user_group_name, self.channel_name)
 
             await self.add_connection()
 
-        await self.channel_layer.group_add(
-            self.room_group_name,
-            self.channel_name
-        )
+        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
 
         await self.accept()
 
-        self.monitor_task = asyncio.create_task(
-            self.monitor_heartbeat()
-        )
+        self.monitor_task = asyncio.create_task(self.monitor_heartbeat())
 
     async def disconnect(self, close_code):
         if hasattr(self, "monitor_task"):
@@ -53,11 +45,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             remaining_connections = await self.remove_connection()
 
-            print(
-                "REMAINING CONNECTIONS:",
-                self.username,
-                remaining_connections
-            )
+            print("REMAINING CONNECTIONS:", self.username, remaining_connections)
 
             # -------------------------------------------------
             # USER COMPLETELY OFFLINE
@@ -68,33 +56,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             if remaining_connections == 0 and matched_username:
 
-                await self.clear_match_for_both(
-                    matched_username
-                )
+                await self.clear_match_for_both(matched_username)
 
                 # Tell partner immediately
                 await self.channel_layer.group_send(
-                    f"user_{matched_username}",
-                    {
-                        "type": "match_ended"
-                    }
+                    f"user_{matched_username}", {"type": "match_ended"}
                 )
 
-                print(
-                    "MATCH ENDED - USER OFFLINE:",
-                    self.username,
-                    matched_username
-                )
+                print("MATCH ENDED - USER OFFLINE:", self.username, matched_username)
 
             await self.channel_layer.group_discard(
-                self.user_group_name,
-                self.channel_name
+                self.user_group_name, self.channel_name
             )
 
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
+        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
 
     async def receive(self, text_data):
 
@@ -120,15 +95,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if not matched_username:
 
-            print(
-                "NO ACTIVE MATCH - MESSAGE NOT SENT"
-            )
+            print("NO ACTIVE MATCH - MESSAGE NOT SENT")
 
-            await self.send(
-                text_data=json.dumps({
-                    "type": "chat_inactive"
-                })
-            )
+            await self.send(text_data=json.dumps({"type": "chat_inactive"}))
 
             return
 
@@ -139,7 +108,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "type": "chat_message",
                 "message": message,
                 "sender": sender,
-            }
+            },
         )
 
         # Send to partner
@@ -149,35 +118,32 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "type": "chat_message",
                 "message": message,
                 "sender": sender,
-            }
+            },
         )
 
     async def chat_message(self, event):
 
         await self.send(
-            text_data=json.dumps({
-                "type": "chat_message",
-                "message": event["message"],
-                "sender": event["sender"]
-            })
+            text_data=json.dumps(
+                {
+                    "type": "chat_message",
+                    "message": event["message"],
+                    "sender": event["sender"],
+                }
+            )
         )
 
     async def match_found(self, event):
 
         await self.send(
-            text_data=json.dumps({
-                "type": "match_found",
-                "matched_username": event["matched_username"]
-            })
+            text_data=json.dumps(
+                {"type": "match_found", "matched_username": event["matched_username"]}
+            )
         )
 
     async def match_ended(self, event):
 
-        await self.send(
-            text_data=json.dumps({
-                "type": "match_ended"
-            })
-        )
+        await self.send(text_data=json.dumps({"type": "match_ended"}))
 
     # =========================================================
     # GET USERNAME
@@ -186,23 +152,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_username(self):
 
-        username = self.scope["session"].get(
-            "username"
-        )
+        username = self.scope["session"].get("username")
 
         if username:
             return username
 
-        query_string = self.scope.get(
-            "query_string",
-            b""
-        ).decode()
+        query_string = self.scope.get("query_string", b"").decode()
 
         params = parse_qs(query_string)
 
-        username_list = params.get(
-            "username"
-        )
+        username_list = params.get("username")
 
         if username_list:
             return username_list[0]
@@ -216,28 +175,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def add_connection(self):
 
-        user = ChatUser.objects.filter(
-            username=self.username
-        ).first()
+        user = ChatUser.objects.filter(username=self.username).first()
 
         if user:
 
-            ChatUser.objects.filter(
-                pk=user.pk
-            ).update(
-                connection_count=F(
-                    "connection_count"
-                ) + 1,
+            ChatUser.objects.filter(pk=user.pk).update(
+                connection_count=F("connection_count") + 1,
                 is_online=True,
-                last_seen=timezone.now()
+                last_seen=timezone.now(),
             )
 
             self.connection_registered = True
 
-            print(
-                "CONNECTION ADDED:",
-                self.username
-            )
+            print("CONNECTION ADDED:", self.username)
 
     # =========================================================
     # REMOVE CONNECTION
@@ -249,17 +199,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not self.connection_registered:
             return 0
 
-        user = ChatUser.objects.filter(
-            username=self.username
-        ).first()
+        user = ChatUser.objects.filter(username=self.username).first()
 
         if not user:
             return 0
 
-        new_count = max(
-            user.connection_count - 1,
-            0
-        )
+        new_count = max(user.connection_count - 1, 0)
 
         user.connection_count = new_count
 
@@ -268,21 +213,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         user.last_seen = timezone.now()
 
-        user.save(
-            update_fields=[
-                "connection_count",
-                "is_online",
-                "last_seen"
-            ]
-        )
+        user.save(update_fields=["connection_count", "is_online", "last_seen"])
 
         self.connection_registered = False
 
-        print(
-            "CONNECTION REMOVED:",
-            self.username,
-            new_count
-        )
+        print("CONNECTION REMOVED:", self.username, new_count)
 
         return new_count
 
@@ -293,9 +228,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_connection_count(self):
 
-        user = ChatUser.objects.filter(
-            username=self.username
-        ).first()
+        user = ChatUser.objects.filter(username=self.username).first()
 
         if not user:
             return 0
@@ -309,16 +242,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def check_heartbeat(self):
 
-        user = ChatUser.objects.filter(
-            username=self.username
-        ).first()
+        user = ChatUser.objects.filter(username=self.username).first()
 
         if not user or not user.last_seen:
             return True
 
-        cutoff = timezone.now() - timedelta(
-            seconds=8
-        )
+        cutoff = timezone.now() - timedelta(seconds=8)
 
         return user.last_seen < cutoff
 
@@ -326,55 +255,88 @@ class ChatConsumer(AsyncWebsocketConsumer):
     # HEARTBEAT MONITOR
     # =========================================================
 
-    async def monitor_heartbeat(self):
+    # =========================================================
 
-        try:
 
-            while True:
+# HEARTBEAT MONITOR
+# =========================================================
 
-                await asyncio.sleep(5)
 
-                is_stale = await self.check_heartbeat()
+async def monitor_heartbeat(self):
 
-                if is_stale:
+    try:
 
-                    await self.set_offline()
+        while True:
 
-                    print(
-                        "HEARTBEAT EXPIRED:",
-                        self.username
+            await asyncio.sleep(5)
+
+            is_stale = await self.check_heartbeat()
+
+            if is_stale:
+
+                matched_username = await self.get_matched_username()
+
+                # Force user offline
+                await self.force_offline()
+
+                if matched_username:
+
+                    await self.clear_match_for_both(matched_username)
+
+                    # Tell partner immediately
+                    await self.channel_layer.group_send(
+                        f"user_{matched_username}", {"type": "match_ended"}
                     )
 
-                    return
+                    print(
+                        "MATCH ENDED - HEARTBEAT EXPIRED:",
+                        self.username,
+                        matched_username,
+                    )
 
-        except asyncio.CancelledError:
-            pass
+                # Close this stale WebSocket
+                try:
+                    await self.close()
+                except Exception:
+                    pass
 
+                return
+
+    except asyncio.CancelledError:
+        pass
     # =========================================================
     # SET OFFLINE
     # =========================================================
 
-    @database_sync_to_async
-    def set_offline(self):
+    # =========================================================
+# FORCE OFFLINE
+# =========================================================
 
-        user = ChatUser.objects.filter(
-            username=self.username
-        ).first()
+@database_sync_to_async
+def force_offline(self):
 
-        if user and user.connection_count == 0:
+    user = ChatUser.objects.filter(
+        username=self.username
+    ).first()
 
-            user.is_online = False
+    if user:
 
-            user.save(
-                update_fields=[
-                    "is_online"
-                ]
-            )
+        user.is_online = False
+        user.connection_count = 0
+        user.last_seen = timezone.now()
 
-            print(
-                "AUTO OFFLINE:",
-                user.username
-            )
+        user.save(
+            update_fields=[
+                "is_online",
+                "connection_count",
+                "last_seen"
+            ]
+        )
+
+        print(
+            "FORCE OFFLINE:",
+            user.username
+        )
 
     # =========================================================
     # UPDATE HEARTBEAT
@@ -383,21 +345,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def update_heartbeat(self):
 
-        user = ChatUser.objects.filter(
-            username=self.username
-        ).first()
+        user = ChatUser.objects.filter(username=self.username).first()
 
         if user:
 
             user.is_online = True
             user.last_seen = timezone.now()
 
-            user.save(
-                update_fields=[
-                    "is_online",
-                    "last_seen"
-                ]
-            )
+            user.save(update_fields=["is_online", "last_seen"])
 
     # =========================================================
     # GET MATCHED USERNAME
@@ -406,10 +361,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_matched_username(self):
 
-        user = ChatUser.objects.filter(
-            username=self.username,
-            is_matched=True
-        ).first()
+        user = ChatUser.objects.filter(username=self.username, is_matched=True).first()
 
         if user:
             return user.matched_with
@@ -423,17 +375,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_active_match(self):
 
-        user = ChatUser.objects.filter(
-            username=self.username,
-            is_matched=True
-        ).first()
+        user = ChatUser.objects.filter(username=self.username, is_matched=True).first()
 
         if not user or not user.matched_with:
             return None
 
-        partner = ChatUser.objects.filter(
-            username=user.matched_with
-        ).first()
+        partner = ChatUser.objects.filter(username=user.matched_with).first()
 
         if not partner:
             return None
@@ -452,18 +399,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
     # =========================================================
 
     @database_sync_to_async
-    def clear_match_for_both(
-        self,
-        partner_username
-    ):
+    def clear_match_for_both(self, partner_username):
 
-        current_user = ChatUser.objects.filter(
-            username=self.username
-        ).first()
+        current_user = ChatUser.objects.filter(username=self.username).first()
 
-        partner = ChatUser.objects.filter(
-            username=partner_username
-        ).first()
+        partner = ChatUser.objects.filter(username=partner_username).first()
 
         if current_user:
 
@@ -472,12 +412,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 current_user.is_matched = False
                 current_user.matched_with = None
 
-                current_user.save(
-                    update_fields=[
-                        "is_matched",
-                        "matched_with"
-                    ]
-                )
+                current_user.save(update_fields=["is_matched", "matched_with"])
 
         if partner:
 
@@ -486,9 +421,4 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 partner.is_matched = False
                 partner.matched_with = None
 
-                partner.save(
-                    update_fields=[
-                        "is_matched",
-                        "matched_with"
-                    ]
-                )
+                partner.save(update_fields=["is_matched", "matched_with"])
