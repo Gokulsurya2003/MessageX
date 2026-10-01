@@ -1,7 +1,10 @@
 import json
 import random
 import os
+import secrets
 import requests
+
+from django.core.cache import cache
 
 from datetime import timedelta
 
@@ -916,78 +919,171 @@ def forgot_password(request):
     return render(request, "forgot-password.html")
 
 
+# ============================================================
+# MOBILE FORGOT PASSWORD API
+# ============================================================
+
+
+@csrf_exempt
+def api_forgot_password(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST request required"}, status=405)
+
+    email = request.POST.get("email", "").strip()
+
+    if not email:
+        return JsonResponse({"error": "Email is required"}, status=400)
+
+    code = str(random.randint(100000, 999999))
+
+    # Random token for this password reset process
+    reset_token = secrets.token_urlsafe(32)
+
+    cache_key = f"messagex_reset:{reset_token}"
+
+    reset_data = {
+        "email": email,
+        "code": code,
+        "verified": False,
+    }
+
+    # Keep reset information for 10 minutes
+    cache.set(cache_key, reset_data, 600)
+
+    # Send OTP through Brevo
+    response = requests.post(
+        "https://api.brevo.com/v3/smtp/email",
+        headers={
+            "accept": "application/json",
+            "api-key": os.getenv("BREVO_API_KEY"),
+            "content-type": "application/json",
+        },
+        json={
+            "sender": {"name": "MessageX", "email": "suryagokul302@gmail.com"},
+            "to": [{"email": email}],
+            "subject": "MessageX Password Reset Code",
+            "textContent": f"Your MessageX password reset code is: {code}",
+        },
+    )
+
+    print("BREVO STATUS:", response.status_code)
+    print("BREVO RESPONSE:", response.text)
+
+    if response.status_code not in [200, 201, 202]:
+
+        cache.delete(cache_key)
+
+        return JsonResponse(
+            {"error": "Unable to send verification email. Please try again."},
+            status=502,
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Reset code sent",
+            "reset_token": reset_token,
+        }
+    )
+
+
+# ============================================================
+# VERIFY RESET CODE API
+# ============================================================
+
+
 @csrf_exempt
 def api_verify_reset_code(request):
+
     if request.method != "POST":
         return JsonResponse({"error": "POST request required"}, status=405)
 
     email = request.POST.get("email", "").strip()
     entered_code = request.POST.get("code", "").strip()
+    reset_token = request.POST.get("reset_token", "").strip()
 
-    if not email or not entered_code:
+    if not email or not entered_code or not reset_token:
         return JsonResponse(
-            {"error": "Email and verification code are required"},
+            {"error": "Email, verification code and reset token are required"},
             status=400,
         )
 
-    saved_code = request.session.get("reset_code")
-    saved_email = request.session.get("reset_email")
+    cache_key = f"messagex_reset:{reset_token}"
 
-    if not saved_code or not saved_email:
+    reset_data = cache.get(cache_key)
+
+    if not reset_data:
         return JsonResponse(
             {"error": "Verification code expired. Please request a new code."},
             status=400,
         )
 
+    saved_email = reset_data.get("email", "")
+    saved_code = reset_data.get("code", "")
+
     if email.lower() != saved_email.lower():
         return JsonResponse(
-            {"error": "Email does not match the reset request."},
-            status=400,
+            {"error": "Email does not match the reset request."}, status=400
         )
 
     if entered_code != saved_code:
-        return JsonResponse(
-            {"error": "Invalid verification code!"},
-            status=400,
-        )
+        return JsonResponse({"error": "Invalid verification code!"}, status=400)
 
-    request.session["reset_verified"] = True
+    # Mark this reset request as verified
+    reset_data["verified"] = True
+
+    # Keep it alive for another 10 minutes
+    cache.set(cache_key, reset_data, 600)
 
     return JsonResponse({"success": True, "message": "Verification code verified"})
 
 
+# ============================================================
+# RESET PASSWORD API
+# ============================================================
+
+
 @csrf_exempt
 def api_reset_password(request):
+
     if request.method != "POST":
         return JsonResponse({"error": "POST request required"}, status=405)
 
+    email = request.POST.get("email", "").strip()
+    reset_token = request.POST.get("reset_token", "").strip()
     password = request.POST.get("password", "")
     confirm_password = request.POST.get("confirm_password", "")
 
+    if not email or not reset_token:
+        return JsonResponse({"error": "Email and reset token are required"}, status=400)
+
     if not password or not confirm_password:
         return JsonResponse(
-            {"error": "Password and confirm password are required"},
-            status=400,
+            {"error": "Password and confirm password are required"}, status=400
         )
 
     if password != confirm_password:
+        return JsonResponse({"error": "Passwords do not match!"}, status=400)
+
+    cache_key = f"messagex_reset:{reset_token}"
+
+    reset_data = cache.get(cache_key)
+
+    if not reset_data:
         return JsonResponse(
-            {"error": "Passwords do not match!"},
-            status=400,
+            {"error": "Password reset session expired. Please try again."}, status=400
         )
 
-    if not request.session.get("reset_verified"):
+    saved_email = reset_data.get("email", "")
+
+    if email.lower() != saved_email.lower():
         return JsonResponse(
-            {"error": "Please verify the verification code first."},
-            status=403,
+            {"error": "Email does not match the reset request."}, status=400
         )
 
-    email = request.session.get("reset_email")
-
-    if not email:
+    if not reset_data.get("verified", False):
         return JsonResponse(
-            {"error": "Password reset session expired. Please try again."},
-            status=400,
+            {"error": "Please verify the verification code first."}, status=403
         )
 
     email = email.replace("\\@", "@").strip()
@@ -995,17 +1091,15 @@ def api_reset_password(request):
     user = ChatUser.objects.filter(email__iexact=email).first()
 
     if not user:
-        return JsonResponse(
-            {"error": "User not found!"},
-            status=404,
-        )
+        return JsonResponse({"error": "User not found!"}, status=404)
 
     user.password = make_password(password)
     user.save()
 
-    request.session.pop("reset_code", None)
-    request.session.pop("reset_email", None)
-    request.session.pop("reset_verified", None)
+    # Delete reset information after successful password change
+    cache.delete(cache_key)
+
+    print("PASSWORD UPDATED:", user.username)
 
     return JsonResponse({"success": True, "message": "Password reset successfully"})
 
