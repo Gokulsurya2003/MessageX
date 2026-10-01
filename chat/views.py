@@ -22,6 +22,7 @@ from django.core.exceptions import ValidationError
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
+
 def reset_all_users(request):
     if request.GET.get("key") != "MessageXReset2026":
         return JsonResponse({"error": "Unauthorized"}, status=403)
@@ -96,8 +97,7 @@ def api_find_random_chat(request):
 
         if not username:
             return JsonResponse(
-                {"success": False, "message": "Username required"},
-                status=400
+                {"success": False, "message": "Username required"}, status=400
             )
 
         current_user = ChatUser.objects.get(username=username)
@@ -111,16 +111,14 @@ def api_find_random_chat(request):
         # Already matched
         if current_user.is_matched and current_user.matched_with:
             try:
-                matched_user = ChatUser.objects.get(
-                    username=current_user.matched_with
-                )
+                matched_user = ChatUser.objects.get(username=current_user.matched_with)
 
                 async_to_sync(channel_layer.group_send)(
                     f"user_{current_user.username}",
                     {
                         "type": "match_found",
                         "matched_username": matched_user.username,
-                    }
+                    },
                 )
 
                 async_to_sync(channel_layer.group_send)(
@@ -128,21 +126,21 @@ def api_find_random_chat(request):
                     {
                         "type": "match_found",
                         "matched_username": current_user.username,
-                    }
+                    },
                 )
 
-                return JsonResponse({
-                    "success": True,
-                    "matched": True,
-                    "matched_username": matched_user.username,
-                })
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "matched": True,
+                        "matched_username": matched_user.username,
+                    }
+                )
 
             except ChatUser.DoesNotExist:
                 current_user.is_matched = False
                 current_user.matched_with = None
-                current_user.save(
-                    update_fields=["is_matched", "matched_with"]
-                )
+                current_user.save(update_fields=["is_matched", "matched_with"])
 
         # Users inactive for more than 8 seconds are ignored
         stale_time = timezone.now() - timedelta(seconds=8)
@@ -160,36 +158,32 @@ def api_find_random_chat(request):
             is_online=True,
             is_matched=False,
             last_seen__gte=stale_time,
-        ).exclude(
-            username=current_user.username
-        )
+        ).exclude(username=current_user.username)
 
         # Remove blocked users
         blocked_by_current = BlockedUser.objects.filter(
             blocker=current_user
         ).values_list("blocked_id", flat=True)
 
-        blocked_current = BlockedUser.objects.filter(
-            blocked=current_user
-        ).values_list("blocker_id", flat=True)
-
-        excluded_ids = set(blocked_by_current).union(
-            set(blocked_current)
+        blocked_current = BlockedUser.objects.filter(blocked=current_user).values_list(
+            "blocker_id", flat=True
         )
 
-        available_users = available_users.exclude(
-            id__in=excluded_ids
-        )
+        excluded_ids = set(blocked_by_current).union(set(blocked_current))
+
+        available_users = available_users.exclude(id__in=excluded_ids)
 
         matched_user = available_users.order_by("?").first()
 
         # Nobody available
         if not matched_user:
-            return JsonResponse({
-                "success": True,
-                "matched": False,
-                "message": "Searching for someone..."
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "matched": False,
+                    "message": "Searching for someone...",
+                }
+            )
 
         # Create match for both users
         current_user.is_matched = True
@@ -198,13 +192,9 @@ def api_find_random_chat(request):
         matched_user.is_matched = True
         matched_user.matched_with = current_user.username
 
-        current_user.save(
-            update_fields=["is_matched", "matched_with"]
-        )
+        current_user.save(update_fields=["is_matched", "matched_with"])
 
-        matched_user.save(
-            update_fields=["is_matched", "matched_with"]
-        )
+        matched_user.save(update_fields=["is_matched", "matched_with"])
 
         # Notify current user
         async_to_sync(channel_layer.group_send)(
@@ -212,7 +202,7 @@ def api_find_random_chat(request):
             {
                 "type": "match_found",
                 "matched_username": matched_user.username,
-            }
+            },
         )
 
         # Notify matched user
@@ -221,28 +211,25 @@ def api_find_random_chat(request):
             {
                 "type": "match_found",
                 "matched_username": current_user.username,
+            },
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "matched": True,
+                "matched_username": matched_user.username,
             }
         )
 
-        return JsonResponse({
-            "success": True,
-            "matched": True,
-            "matched_username": matched_user.username,
-        })
-
     except ChatUser.DoesNotExist:
-        return JsonResponse({
-            "success": False,
-            "message": "User not found"
-        }, status=404)
+        return JsonResponse({"success": False, "message": "User not found"}, status=404)
 
     except Exception as e:
         print("api_find_random_chat error:", e)
 
-        return JsonResponse({
-            "success": False,
-            "message": str(e)
-        }, status=500)
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+
 
 @csrf_exempt
 @require_POST
@@ -253,8 +240,7 @@ def api_disconnect_chat(request):
 
         if not username:
             return JsonResponse(
-                {"success": False, "message": "Username required"},
-                status=400
+                {"success": False, "message": "Username required"}, status=400
             )
 
         current_user = ChatUser.objects.get(username=username)
@@ -266,30 +252,21 @@ def api_disconnect_chat(request):
         # Disconnect current user
         current_user.is_matched = False
         current_user.matched_with = None
-        current_user.save(
-            update_fields=["is_matched", "matched_with"]
-        )
+        current_user.save(update_fields=["is_matched", "matched_with"])
 
         # Disconnect partner
         if matched_username:
             try:
-                matched_user = ChatUser.objects.get(
-                    username=matched_username
-                )
+                matched_user = ChatUser.objects.get(username=matched_username)
 
                 if matched_user.matched_with == current_user.username:
                     matched_user.is_matched = False
                     matched_user.matched_with = None
-                    matched_user.save(
-                        update_fields=["is_matched", "matched_with"]
-                    )
+                    matched_user.save(update_fields=["is_matched", "matched_with"])
 
                 # Tell partner
                 async_to_sync(channel_layer.group_send)(
-                    f"user_{matched_user.username}",
-                    {
-                        "type": "match_ended"
-                    }
+                    f"user_{matched_user.username}", {"type": "match_ended"}
                 )
 
             except ChatUser.DoesNotExist:
@@ -297,30 +274,22 @@ def api_disconnect_chat(request):
 
         # Tell current user
         async_to_sync(channel_layer.group_send)(
-            f"user_{current_user.username}",
-            {
-                "type": "match_ended"
-            }
+            f"user_{current_user.username}", {"type": "match_ended"}
         )
 
-        return JsonResponse({
-            "success": True,
-            "message": "Chat disconnected successfully"
-        })
+        return JsonResponse(
+            {"success": True, "message": "Chat disconnected successfully"}
+        )
 
     except ChatUser.DoesNotExist:
-        return JsonResponse({
-            "success": False,
-            "message": "User not found"
-        }, status=404)
+        return JsonResponse({"success": False, "message": "User not found"}, status=404)
 
     except Exception as e:
         print("api_disconnect_chat error:", e)
 
-        return JsonResponse({
-            "success": False,
-            "message": str(e)
-        }, status=500)
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+
+
 # ============================================================
 # LOGOUT API
 # ============================================================
@@ -905,6 +874,7 @@ def verify_signup(request):
 
     return render(request, "verify-signup.html")
 
+
 @csrf_exempt
 def forgot_password(request):
     if request.method == "POST":
@@ -944,6 +914,100 @@ def forgot_password(request):
         return redirect("verify_code")
 
     return render(request, "forgot-password.html")
+
+
+@csrf_exempt
+def api_verify_reset_code(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST request required"}, status=405)
+
+    email = request.POST.get("email", "").strip()
+    entered_code = request.POST.get("code", "").strip()
+
+    if not email or not entered_code:
+        return JsonResponse(
+            {"error": "Email and verification code are required"},
+            status=400,
+        )
+
+    saved_code = request.session.get("reset_code")
+    saved_email = request.session.get("reset_email")
+
+    if not saved_code or not saved_email:
+        return JsonResponse(
+            {"error": "Verification code expired. Please request a new code."},
+            status=400,
+        )
+
+    if email.lower() != saved_email.lower():
+        return JsonResponse(
+            {"error": "Email does not match the reset request."},
+            status=400,
+        )
+
+    if entered_code != saved_code:
+        return JsonResponse(
+            {"error": "Invalid verification code!"},
+            status=400,
+        )
+
+    request.session["reset_verified"] = True
+
+    return JsonResponse({"success": True, "message": "Verification code verified"})
+
+
+@csrf_exempt
+def api_reset_password(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST request required"}, status=405)
+
+    password = request.POST.get("password", "")
+    confirm_password = request.POST.get("confirm_password", "")
+
+    if not password or not confirm_password:
+        return JsonResponse(
+            {"error": "Password and confirm password are required"},
+            status=400,
+        )
+
+    if password != confirm_password:
+        return JsonResponse(
+            {"error": "Passwords do not match!"},
+            status=400,
+        )
+
+    if not request.session.get("reset_verified"):
+        return JsonResponse(
+            {"error": "Please verify the verification code first."},
+            status=403,
+        )
+
+    email = request.session.get("reset_email")
+
+    if not email:
+        return JsonResponse(
+            {"error": "Password reset session expired. Please try again."},
+            status=400,
+        )
+
+    email = email.replace("\\@", "@").strip()
+
+    user = ChatUser.objects.filter(email__iexact=email).first()
+
+    if not user:
+        return JsonResponse(
+            {"error": "User not found!"},
+            status=404,
+        )
+
+    user.password = make_password(password)
+    user.save()
+
+    request.session.pop("reset_code", None)
+    request.session.pop("reset_email", None)
+    request.session.pop("reset_verified", None)
+
+    return JsonResponse({"success": True, "message": "Password reset successfully"})
 
 
 def verify_code(request):

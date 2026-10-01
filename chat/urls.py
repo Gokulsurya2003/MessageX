@@ -53,5 +53,7 @@ urlpatterns = [path("", views.home,name="home"),
                path("verify-signup/", views.verify_signup, name="verify_signup"),
                path("forgot-password.html",views.forgot_password,name="forgot_password"),
                path("api/forgot-password/", views.forgot_password, name="api_forgot_password"),
+               path("api/verify-reset-code/", views.api_verify_reset_code, name="api_verify_reset_code"),
+               path("api/reset-password/", views.api_reset_password, name="api_reset_password"),
                path("verify-code.html",views.verify_code,name="verify_code"),
                path("reset-password.html",views.reset_password,name="reset_password")]
